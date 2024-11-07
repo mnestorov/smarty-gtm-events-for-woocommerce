@@ -45,7 +45,9 @@ function smarty_gtm_get_site_identifier() {
  * Utility function to push data to the dataLayer
  */
 function smarty_gtm_push_to_dataLayer($data) {
+    echo "\n<!-- SM - GTM Events for WooCommerce Plugin: Start Data Layer Event -->\n";
     echo '<script>window.dataLayer = window.dataLayer || []; dataLayer.push(' . json_encode($data) . ');</script>';
+    echo "\n<!-- SM - GTM Events for WooCommerce Plugin: End Data Layer Event -->\n";
 }
 
 /**

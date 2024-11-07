@@ -28,6 +28,10 @@ function smarty_gtm_events_enqueue_scripts() {
         add_action('wp_footer', 'smarty_gtm_view_item');
         add_action('wp_footer', 'smarty_gtm_view_item_list');
     }
+    wp_enqueue_script('smarty-gtm-ajax-script', plugins_url('/js/smarty-gtm-events.js', __FILE__), array('jquery'), null, true);
+    wp_localize_script('smarty-gtm-ajax-script', 'smarty_gtm_ajax', array(
+        'ajax_url' => admin_url('admin-ajax.php'),
+    ));
 }
 add_action('wp_enqueue_scripts', 'smarty_gtm_events_enqueue_scripts');
 
@@ -115,8 +119,9 @@ function smarty_gtm_view_item_list() {
 }
 
 /**
- * Push addToCart event to dataLayer when a product is added to cart
+ * Push add_to_cart event to dataLayer when a product is added to cart
  */
+/*
 function smarty_gtm_add_to_cart($cart_item_key, $product_id, $quantity) {
     $product = wc_get_product($product_id);
     $site_info = smarty_gtm_get_site_identifier();
@@ -144,6 +149,40 @@ function smarty_gtm_add_to_cart($cart_item_key, $product_id, $quantity) {
     });
 }
 add_action('woocommerce_add_to_cart', 'smarty_gtm_add_to_cart', 10, 3);
+*/
+
+/**
+ * Push add_to_cart event to dataLayer when a product is added to cart using AJAX handler
+ */
+function smarty_gtm_add_to_cart_ajax() {
+    $product_id = intval($_POST['product_id']);
+    $quantity = intval($_POST['quantity']);
+    $product = wc_get_product($product_id);
+
+    $site_info = smarty_gtm_get_site_identifier();
+
+    $data = [
+        'event' => 'add_to_cart',
+        'siteInfo' => $site_info,
+        'ecommerce' => [
+            'currencyCode' => get_woocommerce_currency(),
+            'add' => [
+                'products' => [
+                    [
+                        'id' => $product->get_id(),
+                        'name' => $product->get_name(),
+                        'price' => $product->get_price(),
+                        'quantity' => $quantity,
+                    ]
+                ]
+            ]
+        ]
+    ];
+
+    wp_send_json($data);
+}
+add_action('wp_ajax_smarty_gtm_add_to_cart', 'smarty_gtm_add_to_cart_ajax');
+add_action('wp_ajax_nopriv_smarty_gtm_add_to_cart', 'smarty_gtm_add_to_cart_ajax');
 
 /**
  * Push begin_checkout event to dataLayer when checkout is started

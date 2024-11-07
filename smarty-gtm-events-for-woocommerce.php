@@ -28,10 +28,18 @@ function smarty_gtm_events_enqueue_scripts() {
         add_action('wp_footer', 'smarty_gtm_view_item');
         add_action('wp_footer', 'smarty_gtm_view_item_list');
     }
-    wp_enqueue_script('smarty-gtm-ajax-script', plugins_url('/js/smarty-gtm-events.js', __FILE__), array('jquery'), null, true);
-    wp_localize_script('smarty-gtm-ajax-script', 'smarty_gtm_ajax', array(
+
+    // Register the script
+    wp_register_script('smarty-gtm-script', plugins_url('js/smarty-gtm-events.js', __FILE__), ['jquery'], '1.0.0', true);
+
+    // Enqueue the script
+    wp_enqueue_script('smarty-gtm-script');
+
+    // Generate a nonce and pass it to JavaScript
+    wp_localize_script('smarty-gtm-script', 'smartyGTMData', [
         'ajax_url' => admin_url('admin-ajax.php'),
-    ));
+        'nonce' => wp_create_nonce('smarty_gtm_nonce_action')
+    ]);
 }
 add_action('wp_enqueue_scripts', 'smarty_gtm_events_enqueue_scripts');
 
@@ -152,15 +160,36 @@ add_action('woocommerce_add_to_cart', 'smarty_gtm_add_to_cart', 10, 3);
 */
 
 /**
- * Push add_to_cart event to dataLayer when a product is added to cart using AJAX handler
+ * Push addToCart event to dataLayer when a product is added to cart via AJAX.
  */
 function smarty_gtm_add_to_cart_ajax() {
-    $product_id = intval($_POST['product_id']);
-    $quantity = intval($_POST['quantity']);
+    // Check for nonce validity
+    if (!isset($_POST['nonce']) || !wp_verify_nonce($_POST['nonce'], 'smarty_gtm_nonce_action')) {
+        wp_send_json_error(['error' => 'Invalid nonce']);
+        return;
+    }
+
+    // Retrieve product ID and quantity from AJAX request
+    $product_id = isset($_POST['product_id']) ? intval($_POST['product_id']) : 0;
+    $quantity = isset($_POST['quantity']) ? intval($_POST['quantity']) : 1;
+
+    // Ensure the product ID is valid
+    if ($product_id <= 0) {
+        wp_send_json_error(['error' => 'Product ID is missing or invalid']);
+        return;
+    }
+
+    // Retrieve the product object
     $product = wc_get_product($product_id);
 
-    $site_info = smarty_gtm_get_site_identifier();
+    // Verify the product object exists
+    if (!$product) {
+        wp_send_json_error(['error' => 'Product not found']);
+        return;
+    }
 
+    // Prepare the data for the dataLayer
+    $site_info = smarty_gtm_get_site_identifier();
     $data = [
         'event' => 'add_to_cart',
         'siteInfo' => $site_info,
@@ -179,10 +208,11 @@ function smarty_gtm_add_to_cart_ajax() {
         ]
     ];
 
-    wp_send_json($data);
+    // Send the data as JSON response
+    wp_send_json_success($data);
 }
-add_action('wp_ajax_smarty_gtm_add_to_cart', 'smarty_gtm_add_to_cart_ajax');
 add_action('wp_ajax_nopriv_smarty_gtm_add_to_cart', 'smarty_gtm_add_to_cart_ajax');
+add_action('wp_ajax_smarty_gtm_add_to_cart', 'smarty_gtm_add_to_cart_ajax');
 
 /**
  * Push view_cart event to dataLayer when cart page is viewed

@@ -63,224 +63,169 @@ function smarty_gtm_push_to_dataLayer($data) {
 }
 
 /**
- * Push view_item event to dataLayer on single product pages
+ * Format event model for GTM data layer.
+ */
+function smarty_gtm_format_event_model($event, $transaction_id = '', $value = '', $currency = 'USD', $shipping = '', $tax = '', $items = []) {
+    $site_info = smarty_gtm_get_site_identifier();
+    return [
+        'event' => $event,
+        'eventModel' => [
+            'transaction_id' => $transaction_id,
+            'affiliation' => $site_info['siteUrl'],
+            'value' => $value,
+            'currency' => $currency,
+            'shipping' => $shipping,
+            'tax' => $tax,
+            'items' => $items,
+        ]
+    ];
+}
+
+/**
+ * Format product item data.
+ */
+function smarty_gtm_format_product_item($product, $quantity = 1, $list_position = 1) {
+    return [
+        'id' => $product->get_id(),
+        'name' => $product->get_name(),
+        'list_name' => 'Order',
+        'brand' => '', // Populate with actual brand if available
+        'category' => wp_get_post_terms($product->get_id(), 'product_cat', ['fields' => 'names'])[0] ?? '',
+        'variant' => '', // Populate with variant if available
+        'list_position' => (string) $list_position,
+        'price' => $product->get_price(),
+        'quantity' => (string) $quantity,
+        'SKU' => $product->get_sku() ?: '',
+    ];
+}
+
+/**
+ * Push view_item event on single product pages.
  */
 function smarty_gtm_view_item() {
     if (is_product()) {
         global $product;
-        
-        $site_info = smarty_gtm_get_site_identifier();
-
-        $data = [
-            'event' => 'view_item',
-            'siteInfo' => $site_info,
-            'ecommerce' => [
-                'currencyCode' => get_woocommerce_currency(),
-                'detail' => [
-                    'products' => [
-                        [
-                            'id' => $product->get_id(),
-                            'name' => $product->get_name(),
-                            'price' => $product->get_price(),
-                            'category' => wp_get_post_terms($product->get_id(), 'product_cat', ['fields' => 'names'])[0] ?? '',
-                        ]
-                    ]
-                ]
-            ]
-        ];
+        $data = smarty_gtm_format_event_model(
+            'view_item',
+            '',
+            $product->get_price(),
+            get_woocommerce_currency(),
+            '',
+            '',
+            [smarty_gtm_format_product_item($product)]
+        );
 
         smarty_gtm_push_to_dataLayer($data);
     }
 }
 
 /**
- * Push view_item_list event to dataLayer on product list pages
+ * Push view_item_list event on product list pages.
  */
 function smarty_gtm_view_item_list() {
     if (is_shop() || is_product_category() || is_product_tag()) {
         global $wp_query;
-
-        $site_info = smarty_gtm_get_site_identifier();
-
         $products = [];
-        foreach ($wp_query->posts as $post) {
+        foreach ($wp_query->posts as $index => $post) {
             $product = wc_get_product($post->ID);
-            $products[] = [
-                'id' => $product->get_id(),
-                'name' => $product->get_name(),
-                'price' => $product->get_price(),
-                'category' => wp_get_post_terms($product->get_id(), 'product_cat', ['fields' => 'names'])[0] ?? '',
-            ];
+            $products[] = smarty_gtm_format_product_item($product, 1, $index + 1);
         }
 
-        $data = [
-            'event' => 'view_item_list',
-            'siteInfo' => $site_info,
-            'ecommerce' => [
-                'currencyCode' => get_woocommerce_currency(),
-                'items' => $products,
-            ]
-        ];
+        $data = smarty_gtm_format_event_model(
+            'view_item_list',
+            '',
+            '',
+            get_woocommerce_currency(),
+            '',
+            '',
+            $products
+        );
 
         smarty_gtm_push_to_dataLayer($data);
     }
 }
 
 /**
- * Push add_to_cart event to dataLayer when a product is added to cart
- */
-/*
-function smarty_gtm_add_to_cart($cart_item_key, $product_id, $quantity) {
-    $product = wc_get_product($product_id);
-    $site_info = smarty_gtm_get_site_identifier();
-
-    $data = [
-        'event' => 'add_to_cart',
-        'siteInfo' => $site_info,
-        'ecommerce' => [
-            'currencyCode' => get_woocommerce_currency(),
-            'add' => [
-                'products' => [
-                    [
-                        'id' => $product->get_id(),
-                        'name' => $product->get_name(),
-                        'price' => $product->get_price(),
-                        'quantity' => $quantity,
-                    ]
-                ]
-            ]
-        ]
-    ];
-
-    add_action('wp_footer', function() use ($data) {
-        smarty_gtm_push_to_dataLayer($data);
-    });
-}
-add_action('woocommerce_add_to_cart', 'smarty_gtm_add_to_cart', 10, 3);
-*/
-
-/**
- * Push addToCart event to dataLayer when a product is added to cart via AJAX.
+ * Push add_to_cart event when product is added to cart via AJAX.
  */
 function smarty_gtm_add_to_cart_ajax() {
-    // Check for nonce validity
     if (!isset($_POST['nonce']) || !wp_verify_nonce($_POST['nonce'], 'smarty_gtm_nonce_action')) {
         wp_send_json_error(['error' => 'Invalid nonce']);
         return;
     }
 
-    // Retrieve product ID and quantity from AJAX request
     $product_id = isset($_POST['product_id']) ? intval($_POST['product_id']) : 0;
     $quantity = isset($_POST['quantity']) ? intval($_POST['quantity']) : 1;
 
-    // Ensure the product ID is valid
     if ($product_id <= 0) {
         wp_send_json_error(['error' => 'Product ID is missing or invalid']);
         return;
     }
 
-    // Retrieve the product object
     $product = wc_get_product($product_id);
-
-    // Verify the product object exists
     if (!$product) {
         wp_send_json_error(['error' => 'Product not found']);
         return;
     }
 
-    // Prepare the data for the dataLayer
-    $site_info = smarty_gtm_get_site_identifier();
-    $data = [
-        'event' => 'add_to_cart',
-        'siteInfo' => $site_info,
-        'ecommerce' => [
-            'currencyCode' => get_woocommerce_currency(),
-            'add' => [
-                'products' => [
-                    [
-                        'id' => $product->get_id(),
-                        'name' => $product->get_name(),
-                        'price' => $product->get_price(),
-                        'quantity' => $quantity,
-                    ]
-                ]
-            ]
-        ]
-    ];
+    $data = smarty_gtm_format_event_model(
+        'add_to_cart',
+        '',
+        $product->get_price() * $quantity,
+        get_woocommerce_currency(),
+        '',
+        '',
+        [smarty_gtm_format_product_item($product, $quantity)]
+    );
 
-    // Send the data as JSON response
     wp_send_json_success($data);
 }
 add_action('wp_ajax_nopriv_smarty_gtm_add_to_cart', 'smarty_gtm_add_to_cart_ajax');
 add_action('wp_ajax_smarty_gtm_add_to_cart', 'smarty_gtm_add_to_cart_ajax');
 
 /**
- * Push view_cart event to dataLayer when cart page is viewed
+ * Push view_cart event when cart page is viewed.
  */
 function smarty_gtm_view_cart() {
     if (is_cart()) {
-        $site_info = smarty_gtm_get_site_identifier();
-
-        // Prepare cart items data
         $cart_items = [];
-        foreach (WC()->cart->get_cart() as $cart_item) {
+        foreach (WC()->cart->get_cart() as $index => $cart_item) {
             $product = $cart_item['data'];
-            $cart_items[] = [
-                'id' => $product->get_id(),
-                'name' => $product->get_name(),
-                'price' => $product->get_price(),
-                'quantity' => $cart_item['quantity'],
-                'category' => wp_get_post_terms($product->get_id(), 'product_cat', ['fields' => 'names'])[0] ?? '',
-            ];
+            $cart_items[] = smarty_gtm_format_product_item($product, $cart_item['quantity'], $index + 1);
         }
 
-        // Prepare the data structure for the view_cart event
-        $data = [
-            'event' => 'view_cart',
-            'siteInfo' => $site_info,
-            'ecommerce' => [
-                'currencyCode' => get_woocommerce_currency(),
-                'items' => $cart_items,
-            ]
-        ];
+        $data = smarty_gtm_format_event_model(
+            'view_cart',
+            '',
+            WC()->cart->get_cart_total(),
+            get_woocommerce_currency(),
+            WC()->cart->get_shipping_total(),
+            WC()->cart->get_total_tax(),
+            $cart_items
+        );
 
-        // Push to dataLayer
         smarty_gtm_push_to_dataLayer($data);
     }
 }
 add_action('woocommerce_before_cart', 'smarty_gtm_view_cart');
 
 /**
- * Push remove_from_cart event to dataLayer when a product is removed from cart
+ * Push remove_from_cart event when a product is removed from cart.
  */
 function smarty_gtm_remove_from_cart($cart_item_key, $cart) {
-    $site_info = smarty_gtm_get_site_identifier();
-
-    // Get product data from cart item key
     $cart_item = $cart->get_cart_item($cart_item_key);
     $product = $cart_item['data'];
 
-    // Prepare the data for the removed product
-    $data = [
-        'event' => 'remove_from_cart',
-        'siteInfo' => $site_info,
-        'ecommerce' => [
-            'currencyCode' => get_woocommerce_currency(),
-            'remove' => [
-                'products' => [
-                    [
-                        'id' => $product->get_id(),
-                        'name' => $product->get_name(),
-                        'price' => $product->get_price(),
-                        'quantity' => $cart_item['quantity'],
-                        'category' => wp_get_post_terms($product->get_id(), 'product_cat', ['fields' => 'names'])[0] ?? '',
-                    ]
-                ]
-            ]
-        ]
-    ];
+    $data = smarty_gtm_format_event_model(
+        'remove_from_cart',
+        '',
+        $product->get_price() * $cart_item['quantity'],
+        get_woocommerce_currency(),
+        '',
+        '',
+        [smarty_gtm_format_product_item($product, $cart_item['quantity'])]
+    );
 
-    // Enqueue the data push to be added in the footer
     add_action('wp_footer', function() use ($data) {
         smarty_gtm_push_to_dataLayer($data);
     });
@@ -288,71 +233,75 @@ function smarty_gtm_remove_from_cart($cart_item_key, $cart) {
 add_action('woocommerce_remove_cart_item', 'smarty_gtm_remove_from_cart', 10, 2);
 
 /**
- * Push begin_checkout event to dataLayer when checkout is started
+ * Push begin_checkout event when checkout is started.
  */
 function smarty_gtm_begin_checkout() {
     if (is_checkout() && !is_order_received_page()) {
         $site_info = smarty_gtm_get_site_identifier();
         $cart_items = [];
-        foreach (WC()->cart->get_cart() as $cart_item) {
+        $cart_total = 0.0;
+
+        foreach (WC()->cart->get_cart() as $index => $cart_item) {
             $product = $cart_item['data'];
+            $quantity = (int) $cart_item['quantity'];
+            $price = (float) $product->get_price();
+
+            // Accumulate the total cart value
+            $cart_total += $price * $quantity;
+
             $cart_items[] = [
                 'id' => $product->get_id(),
                 'name' => $product->get_name(),
-                'price' => $product->get_price(),
-                'quantity' => $cart_item['quantity'],
+                'brand' => '',
+                'category' => wp_get_post_terms($product->get_id(), 'product_cat', ['fields' => 'names'])[0] ?? '',
+                'variant' => '',
+                'list_name' => 'Order',
+                'price' => number_format($price, 2, '.', ''),
+                'quantity' => (string) $quantity,
+                'SKU' => $product->get_sku(),
             ];
         }
 
         $data = [
             'event' => 'begin_checkout',
-            'siteInfo' => $site_info,
-            'ecommerce' => [
-                'currencyCode' => get_woocommerce_currency(),
+            'eventModel' => [
+                'transaction_id' => uniqid('order_'),
+                'affiliation' => $site_info['siteUrl'],
+                'value' => number_format($cart_total, 2, '.', ''),
+                'currency' => get_woocommerce_currency(),
+                'shipping' => number_format((float) WC()->cart->get_shipping_total(), 2, '.', ''),
+                'tax' => number_format((float) WC()->cart->get_total_tax(), 2, '.', ''),
                 'items' => $cart_items,
             ]
         ];
 
+        // Push the formatted data to the dataLayer
         smarty_gtm_push_to_dataLayer($data);
     }
 }
 add_action('woocommerce_before_checkout_form', 'smarty_gtm_begin_checkout');
 
+
 /**
- * Push purchase event to dataLayer on the order confirmation page
+ * Push purchase event on order confirmation page.
  */
 function smarty_gtm_purchase($order_id) {
     $order = wc_get_order($order_id);
-    $site_info = smarty_gtm_get_site_identifier();
-
-    $products = [];
-    foreach ($order->get_items() as $item) {
+    $items = [];
+    foreach ($order->get_items() as $index => $item) {
         $product = $item->get_product();
-        $products[] = [
-            'id' => $product->get_id(),
-            'name' => $product->get_name(),
-            'price' => $product->get_price(),
-            'quantity' => $item->get_quantity(),
-        ];
+        $items[] = smarty_gtm_format_product_item($product, $item->get_quantity(), $index + 1);
     }
 
-    $data = [
-        'event' => 'purchase',
-        'siteInfo' => $site_info,
-        'ecommerce' => [
-            'currencyCode' => get_woocommerce_currency(),
-            'purchase' => [
-                'actionField' => [
-                    'id' => $order->get_id(),
-                    'affiliation' => get_bloginfo('name'),
-                    'revenue' => $order->get_total(),
-                    'tax' => $order->get_total_tax(),
-                    'shipping' => $order->get_shipping_total(),
-                ],
-                'products' => $products,
-            ]
-        ]
-    ];
+    $data = smarty_gtm_format_event_model(
+        'purchase',
+        $order->get_id(),
+        $order->get_total(),
+        get_woocommerce_currency(),
+        $order->get_shipping_total(),
+        $order->get_total_tax(),
+        $items
+    );
 
     smarty_gtm_push_to_dataLayer($data);
 }

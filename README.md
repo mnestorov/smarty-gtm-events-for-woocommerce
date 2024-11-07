@@ -104,7 +104,56 @@ Fires when a product is added to the cart, capturing the product ID, name, price
 }
 ```
 
-### 4. `begin_checkout`
+### 4. `view_cart`
+
+Triggered on the cart page to provide an overview of the items in the cart.
+
+**Data Structure:**
+
+```javascript
+{
+    "event": "view_cart",
+    "ecommerce": {
+        "currencyCode": "USD",
+        "items": [
+            {
+                "id": "123",
+                "name": "Sample Product",
+                "price": "49.99",
+                "quantity": 1
+            },
+            // Other cart items...
+        ]
+    }
+}
+```
+
+### 5. `remove_from_cart`
+
+Fires when a product is removed from the cart, capturing details of the removed product.
+
+**Data Structure:**
+
+```javascript
+{
+    "event": "remove_from_cart",
+    "ecommerce": {
+        "currencyCode": "USD",
+        "remove": {
+            "products": [
+                {
+                    "id": "123",
+                    "name": "Sample Product",
+                    "price": "49.99",
+                    "quantity": 1
+                }
+            ]
+        }
+    }
+}
+```
+
+### 6. `begin_checkout`
 
 Triggered when the checkout process begins, capturing details of items currently in the cart.
 
@@ -128,7 +177,7 @@ Triggered when the checkout process begins, capturing details of items currently
 }
 ```
 
-### 5. `purchase`
+### 7. `purchase`
 
 Fires on the order confirmation page to log purchase details, including order ID, total revenue, tax, shipping, and items purchased.
 

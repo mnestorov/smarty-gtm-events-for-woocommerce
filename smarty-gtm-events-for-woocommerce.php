@@ -185,6 +185,79 @@ add_action('wp_ajax_smarty_gtm_add_to_cart', 'smarty_gtm_add_to_cart_ajax');
 add_action('wp_ajax_nopriv_smarty_gtm_add_to_cart', 'smarty_gtm_add_to_cart_ajax');
 
 /**
+ * Push view_cart event to dataLayer when cart page is viewed
+ */
+function smarty_gtm_view_cart() {
+    if (is_cart()) {
+        $site_info = smarty_gtm_get_site_identifier();
+
+        // Prepare cart items data
+        $cart_items = [];
+        foreach (WC()->cart->get_cart() as $cart_item) {
+            $product = $cart_item['data'];
+            $cart_items[] = [
+                'id' => $product->get_id(),
+                'name' => $product->get_name(),
+                'price' => $product->get_price(),
+                'quantity' => $cart_item['quantity'],
+                'category' => wp_get_post_terms($product->get_id(), 'product_cat', ['fields' => 'names'])[0] ?? '',
+            ];
+        }
+
+        // Prepare the data structure for the view_cart event
+        $data = [
+            'event' => 'view_cart',
+            'siteInfo' => $site_info,
+            'ecommerce' => [
+                'currencyCode' => get_woocommerce_currency(),
+                'items' => $cart_items,
+            ]
+        ];
+
+        // Push to dataLayer
+        smarty_gtm_push_to_dataLayer($data);
+    }
+}
+add_action('woocommerce_before_cart', 'smarty_gtm_view_cart');
+
+/**
+ * Push remove_from_cart event to dataLayer when a product is removed from cart
+ */
+function smarty_gtm_remove_from_cart($cart_item_key, $cart) {
+    $site_info = smarty_gtm_get_site_identifier();
+
+    // Get product data from cart item key
+    $cart_item = $cart->get_cart_item($cart_item_key);
+    $product = $cart_item['data'];
+
+    // Prepare the data for the removed product
+    $data = [
+        'event' => 'remove_from_cart',
+        'siteInfo' => $site_info,
+        'ecommerce' => [
+            'currencyCode' => get_woocommerce_currency(),
+            'remove' => [
+                'products' => [
+                    [
+                        'id' => $product->get_id(),
+                        'name' => $product->get_name(),
+                        'price' => $product->get_price(),
+                        'quantity' => $cart_item['quantity'],
+                        'category' => wp_get_post_terms($product->get_id(), 'product_cat', ['fields' => 'names'])[0] ?? '',
+                    ]
+                ]
+            ]
+        ]
+    ];
+
+    // Enqueue the data push to be added in the footer
+    add_action('wp_footer', function() use ($data) {
+        smarty_gtm_push_to_dataLayer($data);
+    });
+}
+add_action('woocommerce_remove_cart_item', 'smarty_gtm_remove_from_cart', 10, 2);
+
+/**
  * Push begin_checkout event to dataLayer when checkout is started
  */
 function smarty_gtm_begin_checkout() {

@@ -32,14 +32,34 @@ function smarty_gtm_events_enqueue_scripts() {
 add_action('wp_enqueue_scripts', 'smarty_gtm_events_enqueue_scripts');
 
 /**
+ * Get the unique site identifier (URL or name)
+ */
+function smarty_gtm_get_site_identifier() {
+    return [
+        'siteUrl' => get_site_url(),
+        'siteName' => get_bloginfo('name')
+    ];
+}
+
+/**
+ * Utility function to push data to the dataLayer
+ */
+function smarty_gtm_push_to_dataLayer($data) {
+    echo '<script>window.dataLayer = window.dataLayer || []; dataLayer.push(' . json_encode($data) . ');</script>';
+}
+
+/**
  * Push view_item event to dataLayer on single product pages
  */
 function smarty_gtm_view_item() {
     if (is_product()) {
         global $product;
+        
+        $site_info = smarty_gtm_get_site_identifier();
 
         $data = [
             'event' => 'view_item',
+            'siteInfo' => $site_info,
             'ecommerce' => [
                 'currencyCode' => get_woocommerce_currency(),
                 'detail' => [
@@ -55,7 +75,7 @@ function smarty_gtm_view_item() {
             ]
         ];
 
-        echo '<script>window.dataLayer = window.dataLayer || []; dataLayer.push(' . json_encode($data) . ');</script>';
+        smarty_gtm_push_to_dataLayer($data);
     }
 }
 
@@ -65,6 +85,8 @@ function smarty_gtm_view_item() {
 function smarty_gtm_view_item_list() {
     if (is_shop() || is_product_category() || is_product_tag()) {
         global $wp_query;
+
+        $site_info = smarty_gtm_get_site_identifier();
 
         $products = [];
         foreach ($wp_query->posts as $post) {
@@ -79,13 +101,14 @@ function smarty_gtm_view_item_list() {
 
         $data = [
             'event' => 'view_item_list',
+            'siteInfo' => $site_info,
             'ecommerce' => [
                 'currencyCode' => get_woocommerce_currency(),
                 'items' => $products,
             ]
         ];
 
-        echo '<script>window.dataLayer = window.dataLayer || []; dataLayer.push(' . json_encode($data) . ');</script>';
+        smarty_gtm_push_to_dataLayer($data);
     }
 }
 
@@ -94,9 +117,11 @@ function smarty_gtm_view_item_list() {
  */
 function smarty_gtm_add_to_cart($cart_item_key, $product_id, $quantity) {
     $product = wc_get_product($product_id);
+    $site_info = smarty_gtm_get_site_identifier();
 
     $data = [
         'event' => 'add_to_cart',
+        'siteInfo' => $site_info,
         'ecommerce' => [
             'currencyCode' => get_woocommerce_currency(),
             'add' => [
@@ -112,7 +137,9 @@ function smarty_gtm_add_to_cart($cart_item_key, $product_id, $quantity) {
         ]
     ];
 
-    echo '<script>window.dataLayer = window.dataLayer || []; dataLayer.push(' . json_encode($data) . ');</script>';
+    add_action('wp_footer', function() use ($data) {
+        smarty_gtm_push_to_dataLayer($data);
+    });
 }
 add_action('woocommerce_add_to_cart', 'smarty_gtm_add_to_cart', 10, 3);
 
@@ -121,6 +148,7 @@ add_action('woocommerce_add_to_cart', 'smarty_gtm_add_to_cart', 10, 3);
  */
 function smarty_gtm_begin_checkout() {
     if (is_checkout() && !is_order_received_page()) {
+        $site_info = smarty_gtm_get_site_identifier();
         $cart_items = [];
         foreach (WC()->cart->get_cart() as $cart_item) {
             $product = $cart_item['data'];
@@ -134,13 +162,14 @@ function smarty_gtm_begin_checkout() {
 
         $data = [
             'event' => 'begin_checkout',
+            'siteInfo' => $site_info,
             'ecommerce' => [
                 'currencyCode' => get_woocommerce_currency(),
                 'items' => $cart_items,
             ]
         ];
 
-        echo '<script>window.dataLayer = window.dataLayer || []; dataLayer.push(' . json_encode($data) . ');</script>';
+        smarty_gtm_push_to_dataLayer($data);
     }
 }
 add_action('woocommerce_before_checkout_form', 'smarty_gtm_begin_checkout');
@@ -150,6 +179,7 @@ add_action('woocommerce_before_checkout_form', 'smarty_gtm_begin_checkout');
  */
 function smarty_gtm_purchase($order_id) {
     $order = wc_get_order($order_id);
+    $site_info = smarty_gtm_get_site_identifier();
 
     $products = [];
     foreach ($order->get_items() as $item) {
@@ -164,6 +194,7 @@ function smarty_gtm_purchase($order_id) {
 
     $data = [
         'event' => 'purchase',
+        'siteInfo' => $site_info,
         'ecommerce' => [
             'currencyCode' => get_woocommerce_currency(),
             'purchase' => [
@@ -179,6 +210,6 @@ function smarty_gtm_purchase($order_id) {
         ]
     ];
 
-    echo '<script>window.dataLayer = window.dataLayer || []; dataLayer.push(' . json_encode($data) . ');</script>';
+    smarty_gtm_push_to_dataLayer($data);
 }
 add_action('woocommerce_thankyou', 'smarty_gtm_purchase', 10, 1);

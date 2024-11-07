@@ -1,6 +1,6 @@
 <?php
 /**
- * Plugin Name:             SM- GTM Events for WooCommerce
+ * Plugin Name:             SM - GTM Events for WooCommerce
  * Plugin URI:              https://github.com/mnestorov/smarty-google-feed-generator
  * Description:             Pushes WooCommerce events to Google Tag Manager's dataLayer.
  * Version:                 1.0.0

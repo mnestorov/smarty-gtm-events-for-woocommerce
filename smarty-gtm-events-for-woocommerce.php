@@ -71,12 +71,13 @@ function smarty_gtm_format_event_model($event, $transaction_id = '', $value = ''
         'event' => $event,
         'eventModel' => [
             'transaction_id' => $transaction_id,
-            'affiliation' => $site_info['siteUrl'],
-            'value' => $value,
-            'currency' => $currency,
-            'shipping' => $shipping,
-            'tax' => $tax,
-            'items' => $items,
+            'affiliation'    => $site_info['siteUrl'],
+            'value'          => $value,
+            'currency'       => $currency,
+            'shipping'       => $shipping,
+            'tax'            => $tax,
+            'items'          => $items,
+            'event_source'   => $event_source,
         ]
     ];
 }
@@ -86,16 +87,16 @@ function smarty_gtm_format_event_model($event, $transaction_id = '', $value = ''
  */
 function smarty_gtm_format_product_item($product, $quantity = 1, $list_position = 1) {
     return [
-        'id' => $product->get_id(),
-        'name' => $product->get_name(),
-        'list_name' => 'Order',
-        'brand' => '', // Populate with actual brand if available
-        'category' => wp_get_post_terms($product->get_id(), 'product_cat', ['fields' => 'names'])[0] ?? '',
-        'variant' => '', // Populate with variant if available
+        'id'            => $product->get_id(),
+        'name'          => $product->get_name(),
+        'list_name'     => 'Order',
+        'brand'         => '', // Populate with actual brand if available
+        'category'      => wp_get_post_terms($product->get_id(), 'product_cat', ['fields' => 'names'])[0] ?? '',
+        'variant'       => '', // Populate with variant if available
         'list_position' => (string) $list_position,
-        'price' => $product->get_price(),
-        'quantity' => (string) $quantity,
-        'SKU' => $product->get_sku() ?: '',
+        'price'         => $product->get_price(),
+        'quantity'      => (string) $quantity,
+        'SKU'           => $product->get_sku() ?: '',
     ];
 }
 
@@ -112,7 +113,8 @@ function smarty_gtm_view_item() {
             get_woocommerce_currency(),
             '',
             '',
-            [smarty_gtm_format_product_item($product)]
+            [smarty_gtm_format_product_item($product)],
+            'smarty-gtm-events-for-woocommerce'
         );
 
         smarty_gtm_push_to_dataLayer($data);
@@ -138,7 +140,8 @@ function smarty_gtm_view_item_list() {
             get_woocommerce_currency(),
             '',
             '',
-            $products
+            $products,
+            'smarty-gtm-events-for-woocommerce'
         );
 
         smarty_gtm_push_to_dataLayer($data);
@@ -175,7 +178,8 @@ function smarty_gtm_add_to_cart_ajax() {
         get_woocommerce_currency(),
         '',
         '',
-        [smarty_gtm_format_product_item($product, $quantity)]
+        [smarty_gtm_format_product_item($product, $quantity)],
+        'smarty-gtm-events-for-woocommerce'
     );
 
     wp_send_json_success($data);
@@ -201,7 +205,8 @@ function smarty_gtm_view_cart() {
             get_woocommerce_currency(),
             WC()->cart->get_shipping_total(),
             WC()->cart->get_total_tax(),
-            $cart_items
+            $cart_items,
+            'smarty-gtm-events-for-woocommerce'
         );
 
         smarty_gtm_push_to_dataLayer($data);
@@ -223,7 +228,8 @@ function smarty_gtm_remove_from_cart($cart_item_key, $cart) {
         get_woocommerce_currency(),
         '',
         '',
-        [smarty_gtm_format_product_item($product, $cart_item['quantity'])]
+        [smarty_gtm_format_product_item($product, $cart_item['quantity'])],
+        'smarty-gtm-events-for-woocommerce'
     );
 
     add_action('wp_footer', function() use ($data) {
@@ -237,7 +243,6 @@ add_action('woocommerce_remove_cart_item', 'smarty_gtm_remove_from_cart', 10, 2)
  */
 function smarty_gtm_begin_checkout() {
     if (is_checkout() && !is_order_received_page()) {
-        $site_info = smarty_gtm_get_site_identifier();
         $cart_items = [];
         $cart_total = 0.0;
 
@@ -249,38 +254,27 @@ function smarty_gtm_begin_checkout() {
             // Accumulate the total cart value
             $cart_total += $price * $quantity;
 
-            $cart_items[] = [
-                'id' => $product->get_id(),
-                'name' => $product->get_name(),
-                'brand' => '',
-                'category' => wp_get_post_terms($product->get_id(), 'product_cat', ['fields' => 'names'])[0] ?? '',
-                'variant' => '',
-                'list_name' => 'Order',
-                'price' => number_format($price, 2, '.', ''),
-                'quantity' => (string) $quantity,
-                'SKU' => $product->get_sku(),
-            ];
+            // Format each product item using smarty_gtm_format_product_item
+            $cart_items[] = smarty_gtm_format_product_item($product, $quantity, $index + 1);
         }
 
-        $data = [
-            'event' => 'begin_checkout',
-            'eventModel' => [
-                'transaction_id' => uniqid('order_'),
-                'affiliation' => $site_info['siteUrl'],
-                'value' => number_format($cart_total, 2, '.', ''),
-                'currency' => get_woocommerce_currency(),
-                'shipping' => number_format((float) WC()->cart->get_shipping_total(), 2, '.', ''),
-                'tax' => number_format((float) WC()->cart->get_total_tax(), 2, '.', ''),
-                'items' => $cart_items,
-            ]
-        ];
+        // Format the event model using smarty_gtm_format_event_model
+        $data = smarty_gtm_format_event_model(
+            'begin_checkout',
+            uniqid('order_'), // Generate a unique transaction ID
+            number_format($cart_total, 2, '.', ''), // Total value for checkout
+            get_woocommerce_currency(),
+            number_format((float) WC()->cart->get_shipping_total(), 2, '.', ''),
+            number_format((float) WC()->cart->get_total_tax(), 2, '.', ''),
+            $cart_items,
+            'smarty-gtm-events-for-woocommerce'
+        );
 
         // Push the formatted data to the dataLayer
         smarty_gtm_push_to_dataLayer($data);
     }
 }
 add_action('woocommerce_before_checkout_form', 'smarty_gtm_begin_checkout');
-
 
 /**
  * Push purchase event on order confirmation page.
@@ -300,9 +294,53 @@ function smarty_gtm_purchase($order_id) {
         get_woocommerce_currency(),
         $order->get_shipping_total(),
         $order->get_total_tax(),
-        $items
+        $items,
+        'smarty-gtm-events-for-woocommerce'
     );
 
     smarty_gtm_push_to_dataLayer($data);
 }
 add_action('woocommerce_thankyou', 'smarty_gtm_purchase', 10, 1);
+
+/**
+ * Push add_payment_info event to dataLayer when payment information is submitted in the checkout process.
+ */
+function smarty_gtm_add_payment_info() {
+    if (is_checkout() && !is_order_received_page()) {
+        $cart_items = [];
+        $cart_total = 0.0;
+
+        foreach (WC()->cart->get_cart() as $index => $cart_item) {
+            $product = $cart_item['data'];
+            $quantity = (int) $cart_item['quantity'];
+            $price = (float) $product->get_price();
+
+            // Accumulate the total cart value
+            $cart_total += $price * $quantity;
+
+            $cart_items[] = smarty_gtm_format_product_item($product, $quantity, $index + 1);
+        }
+
+        // Retrieve the payment method, defaulting to 'unknown' if not available
+        $payment_method = WC()->session->get('chosen_payment_method') ?: 'unknown';
+
+        // Format the event model using smarty_gtm_format_event_model
+        $data = smarty_gtm_format_event_model(
+            'add_payment_info',
+            uniqid('order_'), // Generate a unique transaction ID
+            number_format($cart_total, 2, '.', ''), // Cart total as 'value'
+            get_woocommerce_currency(),
+            number_format((float) WC()->cart->get_shipping_total(), 2, '.', ''),
+            number_format((float) WC()->cart->get_total_tax(), 2, '.', ''),
+            $cart_items,
+            'smarty-gtm-events-for-woocommerce'
+        );
+
+        // Add additional field for payment type
+        $data['eventModel']['payment_type'] = $payment_method;
+
+        // Push the formatted data to the dataLayer
+        smarty_gtm_push_to_dataLayer($data);
+    }
+}
+add_action('woocommerce_review_order_after_submit', 'smarty_gtm_add_payment_info');

@@ -215,6 +215,31 @@ Fires on the order confirmation page to log purchase details, including order ID
 }
 ```
 
+### 8. `add_payment_info`
+
+Triggered when payment information is submitted during checkout. This event captures cart details and the selected payment method.
+
+**Data Structure:**
+
+```javascript
+{
+    "event": "add_payment_info",
+    "ecommerce": {
+        "currencyCode": "USD",
+        "payment_type": "credit_card",
+        "items": [
+            {
+                "id": "123",
+                "name": "Sample Product",
+                "price": "49.99",
+                "quantity": 1
+            },
+            // Other cart items...
+        ]
+    }
+}
+```
+
 ## Requirements
 
 - WordPress 4.7+ or higher.

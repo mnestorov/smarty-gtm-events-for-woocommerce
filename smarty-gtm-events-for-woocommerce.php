@@ -65,7 +65,7 @@ function smarty_gtm_push_to_dataLayer($data) {
 /**
  * Format event model for GTM data layer.
  */
-function smarty_gtm_format_event_model($event, $transaction_id = '', $value = '', $currency = 'USD', $shipping = '', $tax = '', $items = []) {
+function smarty_gtm_format_event_model($event, $transaction_id = '', $value = '', $currency = 'USD', $shipping = '', $tax = '', $items = [], $event_source = 'plugin') {
     $site_info = smarty_gtm_get_site_identifier();
     return [
         'event' => $event,

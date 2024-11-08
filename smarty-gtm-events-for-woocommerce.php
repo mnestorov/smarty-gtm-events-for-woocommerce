@@ -308,33 +308,36 @@ add_action('woocommerce_thankyou', 'smarty_gtm_purchase', 10, 1);
 function smarty_gtm_add_payment_info() {
     if (is_checkout() && !is_order_received_page()) {
         $cart_items = [];
-        $cart_total = 0.0;
+        $cart_total = 0; // Keep it as integer
 
         foreach (WC()->cart->get_cart() as $index => $cart_item) {
             $product = $cart_item['data'];
-            $quantity = (int) $cart_item['quantity'];
-            $price = (float) $product->get_price();
+            $quantity = intval($cart_item['quantity']);
+            $price = floatval($product->get_price());
 
-            // Accumulate the total cart value
-            $cart_total += $price * $quantity;
+            $line_total = $price * $quantity;
+            $cart_total += $line_total;
 
-            $cart_items[] = smarty_gtm_format_product_item($product, $quantity, $index + 1);
+            $cart_items[] = [
+                'id' => $product->get_id(),
+                'name' => $product->get_name(),
+                'price' => $price,
+                'quantity' => $quantity,
+            ];
         }
 
-        // Retrieve the payment method, defaulting to 'unknown' if not available
         $payment_method = WC()->session->get('chosen_payment_method') ?: 'unknown';
-
-        // Format the event model using smarty_gtm_format_event_model
-        $data = smarty_gtm_format_event_model(
-            'add_payment_info',
-            uniqid('order_'), // Generate a unique transaction ID
-            number_format($cart_total, 2, '.', ''), // Cart total as 'value'
-            get_woocommerce_currency(),
+		
+		$data = smarty_gtm_format_event_model(
+			'add_payment_info',
+			uniqid('order_'),
+			$cart_total,
+			get_woocommerce_currency(),
             number_format((float) WC()->cart->get_shipping_total(), 2, '.', ''),
             number_format((float) WC()->cart->get_total_tax(), 2, '.', ''),
-            $cart_items,
-            'smarty-gtm-events-for-woocommerce'
-        );
+			$cart_items,
+			'smarty-gtm-events-for-woocommerce'
+		);
 
         // Add additional field for payment type
         $data['eventModel']['payment_type'] = $payment_method;
@@ -343,4 +346,3 @@ function smarty_gtm_add_payment_info() {
         smarty_gtm_push_to_dataLayer($data);
     }
 }
-add_action('woocommerce_review_order_after_submit', 'smarty_gtm_add_payment_info');

@@ -20,6 +20,9 @@ if (!defined('WPINC')) {
 	die;
 }
 
+// Define your secret key to clear the logs.
+define('SMARTY_GTM_CLEAR_LOGS_SECRET', 'your-unique-secret-key');
+
 /**
  * Enqueue necessary JavaScript for dataLayer
  *
@@ -74,7 +77,6 @@ function smarty_gtm_push_to_dataLayer($data) {
     echo '</script>';
     echo "\n<!-- SM - GTM Events for WooCommerce Plugin: End Data Layer Event -->\n";
 }
-
 
 /**
  * Format event model for GTM data layer
@@ -179,6 +181,8 @@ function smarty_gtm_view_item() {
         );
 
         smarty_gtm_push_to_dataLayer($data);
+
+        smarty_gtm_log_event('view_item', $data);
     }
 }
 add_action('woocommerce_after_single_product', 'smarty_gtm_view_item');
@@ -217,6 +221,8 @@ function smarty_gtm_view_item_list() {
         );
 
         smarty_gtm_push_to_dataLayer($data);
+
+        smarty_gtm_log_event('view_item_list', $data);
     }
 }
 add_action('woocommerce_after_shop_loop', 'smarty_gtm_view_item_list');
@@ -246,12 +252,14 @@ function smarty_gtm_add_to_cart_ajax() {
     $quantity   = isset($_POST['quantity']) ? intval($_POST['quantity']) : 1;
 
     if ($product_id <= 0) {
+        smarty_gtm_log_error($error_message);
         wp_send_json_error(array('error' => __('Product ID is missing or invalid', 'smarty-gtm-events-for-woocommerce')));
         return;
     }
 
     $product = wc_get_product($product_id);
     if (!$product) {
+        smarty_gtm_log_error($error_message);
         wp_send_json_error(array('error' => __('Product not found', 'smarty-gtm-events-for-woocommerce')));
         return;
     }
@@ -266,6 +274,8 @@ function smarty_gtm_add_to_cart_ajax() {
         array( smarty_gtm_format_product_item($product, $quantity) ),
         'smarty-gtm-events-for-woocommerce'
     );
+
+    smarty_gtm_log_event('add_to_cart', $data);
 
     wp_send_json_success($data);
 }
@@ -299,6 +309,8 @@ function smarty_gtm_view_cart() {
         );
 
         smarty_gtm_push_to_dataLayer($data);
+
+        smarty_gtm_log_event('view_cart', $data);
     }
 }
 add_action('woocommerce_after_cart_table', 'smarty_gtm_view_cart');
@@ -328,6 +340,8 @@ function smarty_gtm_remove_from_cart($cart_item_key, $cart) {
     add_action('wp_footer', function() use ($data) {
         smarty_gtm_push_to_dataLayer($data);
     });
+
+    smarty_gtm_log_event('remove_from_cart', $data);
 }
 add_action('woocommerce_remove_cart_item', 'smarty_gtm_remove_from_cart', 10, 2);
 
@@ -349,7 +363,6 @@ function smarty_gtm_add_data_to_remove_link($url, $cart_item_key) {
 }
 add_filter('woocommerce_cart_item_remove_link', 'smarty_gtm_add_data_to_remove_link', 10, 2);
 
-
 /**
  * AJAX handler to get product data for remove_from_cart event
  */
@@ -359,12 +372,14 @@ function smarty_gtm_get_product_data() {
     $product_id = isset($_POST['product_id']) ? absint($_POST['product_id']) : 0;
 
     if ($product_id <= 0) {
+        smarty_gtm_log_error($error_message);
         wp_send_json_error(array('error' => __('Product ID is missing or invalid', 'smarty-gtm-events-for-woocommerce')));
         return;
     }
 
     $product = wc_get_product($product_id);
     if (!$product) {
+        smarty_gtm_log_error($error_message);
         wp_send_json_error(array('error' => __('Product not found', 'smarty-gtm-events-for-woocommerce')));
         return;
     }
@@ -409,6 +424,8 @@ function smarty_gtm_begin_checkout() {
         );
 
         smarty_gtm_push_to_dataLayer($data);
+
+        smarty_gtm_log_event('begin_checkout', $data);
     }
 }
 add_action('woocommerce_before_checkout_form', 'smarty_gtm_begin_checkout');
@@ -447,6 +464,8 @@ function smarty_gtm_purchase($order_id) {
     );
 
     smarty_gtm_push_to_dataLayer($data);
+
+    smarty_gtm_log_event('purchase', $data);
 }
 add_action('woocommerce_thankyou', 'smarty_gtm_purchase', 10, 1);
 
@@ -496,6 +515,8 @@ function smarty_gtm_add_payment_info() {
 
         // Push the formatted data to the dataLayer
         smarty_gtm_push_to_dataLayer($data);
+
+        smarty_gtm_log_event('add_payment_info', $data);
     }
 }
 add_action('woocommerce_review_order_after_payment', 'smarty_gtm_add_payment_info');
@@ -524,6 +545,8 @@ function smarty_gtm_push_search_event() {
         'search_term' => $search_query,
     );
     smarty_gtm_push_to_dataLayer($data);
+
+    smarty_gtm_log_event('search', $data);
 }
 
 /**
@@ -538,6 +561,8 @@ function smarty_gtm_coupon_applied($coupon_code) {
         'coupon' => $coupon_code,
     );
     smarty_gtm_push_to_dataLayer($data);
+
+    smarty_gtm_log_event('apply_coupon', $data);
 }
 add_action('woocommerce_applied_coupon', 'smarty_gtm_coupon_applied');
 
@@ -559,5 +584,304 @@ function smarty_gtm_order_refunded($order_id, $refund_id) {
         'currency' => $order->get_currency(),
     );
     smarty_gtm_push_to_dataLayer($data);
+
+    smarty_gtm_log_event('refund', $data);
 }
 add_action('woocommerce_order_refunded', 'smarty_gtm_order_refunded', 10, 2);
+
+/**
+ * Create the event log database table upon plugin activation.
+ *
+ * @return void
+ */
+function smarty_gtm_create_event_log_table() {
+    global $wpdb;
+    $table_name = $wpdb->prefix . 'smarty_gtm_event_log';
+
+    $charset_collate = $wpdb->get_charset_collate();
+
+    $sql = "CREATE TABLE IF NOT EXISTS $table_name (
+        id BIGINT(20) UNSIGNED NOT NULL AUTO_INCREMENT,
+        event_time DATETIME NOT NULL,
+        event_name VARCHAR(255) NOT NULL,
+        user_id BIGINT(20) UNSIGNED DEFAULT NULL,
+        user_role VARCHAR(255) DEFAULT NULL,
+        event_data LONGTEXT DEFAULT NULL,
+        PRIMARY KEY (id),
+        INDEX (event_time),
+        INDEX (event_name)
+    ) $charset_collate;";
+
+    require_once(ABSPATH . 'wp-admin/includes/upgrade.php');
+    dbDelta($sql);
+}
+
+/**
+ * Create the error log database table upon plugin activation.
+ *
+ * @return void
+ */
+function smarty_gtm_create_error_log_table() {
+    global $wpdb;
+    $table_name = $wpdb->prefix . 'smarty_gtm_error_log';
+
+    $charset_collate = $wpdb->get_charset_collate();
+
+    $sql = "CREATE TABLE IF NOT EXISTS $table_name (
+        id BIGINT(20) UNSIGNED NOT NULL AUTO_INCREMENT,
+        error_time DATETIME NOT NULL,
+        error_message TEXT NOT NULL,
+        PRIMARY KEY (id),
+        INDEX (error_time)
+    ) $charset_collate;";
+
+    require_once(ABSPATH . 'wp-admin/includes/upgrade.php');
+    dbDelta($sql);
+}
+
+/**
+ * Plugin activation hook to create necessary database tables.
+ *
+ * @return void
+ */
+function smarty_gtm_plugin_activation() {
+    smarty_gtm_create_event_log_table();
+    smarty_gtm_create_error_log_table();
+}
+register_activation_hook(__FILE__, 'smarty_gtm_plugin_activation');
+
+/**
+ * Log an event to the database.
+ *
+ * @param string $event_name Event name.
+ * @param array  $event_data Event data.
+ * @return void
+ */
+function smarty_gtm_log_event($event_name, $event_data = array()) {
+    global $wpdb;
+    $table_name = $wpdb->prefix . 'smarty_gtm_event_log';
+
+    $user_id = null;
+    $user_role = null;
+    if (is_user_logged_in()) {
+        $user = wp_get_current_user();
+        $user_id = $user->ID;
+        $user_role = implode(', ', $user->roles);
+    }
+
+    $wpdb->insert(
+        $table_name,
+        array(
+            'event_time' => current_time('mysql'),
+            'event_name' => $event_name,
+            'user_id' => $user_id,
+            'user_role' => $user_role,
+            'event_data' => maybe_serialize($event_data),
+        ),
+        array(
+            '%s',
+            '%s',
+            '%d',
+            '%s',
+            '%s',
+        )
+    );
+}
+
+/**
+ * Log an error message and reset the dismissed flag.
+ *
+ * @param string $error_message Error message to log.
+ * @return void
+ */
+function smarty_gtm_log_error($error_message) {
+    global $wpdb;
+    $table_name = $wpdb->prefix . 'smarty_gtm_error_log';
+
+    $wpdb->insert(
+        $table_name,
+        array(
+            'error_time' => current_time('mysql'),
+            'error_message' => $error_message,
+        ),
+        array(
+            '%s',
+            '%s',
+        )
+    );
+
+    // Reset the dismissed flag when a new error is logged
+    delete_option('smarty_gtm_errors_dismissed');
+}
+
+/**
+ * Retrieve recent errors from the error log.
+ *
+ * @param int $limit Number of errors to retrieve.
+ * @return array Array of recent errors.
+ */
+function smarty_gtm_get_recent_errors($limit = 5) {
+    global $wpdb;
+    $table_name = $wpdb->prefix . 'smarty_gtm_error_log';
+
+    $results = $wpdb->get_results(
+        $wpdb->prepare("SELECT error_time, error_message FROM $table_name ORDER BY error_time DESC LIMIT %d", $limit),
+        ARRAY_A
+    );
+
+    return $results;
+}
+
+/**
+ * Display an admin notice if there are logged errors.
+ *
+ * @return void
+ */
+function smarty_gtm_display_error_notice() {
+    // Only show the notice to users who can manage options
+    if (!current_user_can('manage_options')) {
+        return;
+    }
+
+    // Check if the notice has been dismissed
+    $dismissed = get_option('smarty_gtm_errors_dismissed');
+    if ($dismissed) {
+        return;
+    }
+
+    // Get recent errors
+    $errors = smarty_gtm_get_recent_errors();
+
+    if (!empty($errors)) {
+        // Prepare the error messages
+        $error_messages = '';
+        foreach ($errors as $error) {
+            $error_messages .= '<li>' . esc_html($error['error_time'] . ' - ' . $error['error_message']) . '</li>';
+        }
+
+        // Display the admin notice
+        echo '<div class="notice notice-error is-dismissible">';
+        echo '<p><strong>SM - GTM Events for WooCommerce:</strong> The following errors have been logged.</p>';
+        echo '<ul>' . $error_messages . '</ul>';
+        echo '<p>Please check the plugin settings or contact support for assistance.</p>';
+        echo '</div>';
+
+        // Include a script to handle the dismiss action
+        ?>
+        <script type="text/javascript">
+            jQuery(document).on('click', '.notice-error.is-dismissible .notice-dismiss', function () {
+                jQuery.ajax({
+                    url: ajaxurl,
+                    method: 'POST',
+                    data: {
+                        action: 'smarty_gtm_dismiss_errors',
+                        nonce: '<?php echo wp_create_nonce('smarty_gtm_dismiss_errors_nonce'); ?>'
+                    }
+                });
+            });
+        </script>
+        <?php
+    }
+}
+add_action('admin_notices', 'smarty_gtm_display_error_notice');
+
+/**
+ * Handle the AJAX request to dismiss the error notice.
+ *
+ * @return void
+ */
+function smarty_gtm_dismiss_errors() {
+    // Verify nonce
+    check_ajax_referer('smarty_gtm_dismiss_errors_nonce', 'nonce');
+
+    // Check if the user has the capability to manage options
+    if (!current_user_can('manage_options')) {
+        wp_send_json_error('Unauthorized', 403);
+    }
+
+    // Update the option to indicate that errors have been dismissed
+    update_option('smarty_gtm_errors_dismissed', true);
+
+    wp_send_json_success();
+}
+add_action('wp_ajax_smarty_gtm_dismiss_errors', 'smarty_gtm_dismiss_errors');
+
+/**
+ * Log an error when a specific URL parameter is present.
+ *
+ * Usage: Visit https://your-site.com/wp-admin/?simulate_error=1 to trigger.
+ *
+ * @return void
+ */
+function smarty_gtm_log_error_on_demand() {
+    if (isset($_GET['simulate_error'])) {
+        $error_message = 'Simulated error triggered via URL parameter.';
+        smarty_gtm_log_error($error_message);
+    }
+}
+add_action('admin_init', 'smarty_gtm_log_error_on_demand');
+
+/**
+ * Clear the GTM event and error logs when a specific URL parameter is present.
+ *
+ * Usage: Visit https://your-site.com/wp-admin/?clear_gtm_logs=1&key=your-unique-secret-key to trigger.
+ *
+ * @return void
+ */
+function smarty_gtm_clear_logs_on_demand() {
+    if (isset($_GET['clear_gtm_logs']) && isset($_GET['key'])) {
+        if (!is_user_logged_in() || !current_user_can('manage_options')) {
+            wp_die(__('You are not authorized to perform this action.', 'smarty-gtm-events-for-woocommerce'));
+        }
+
+        // Verify the secret key
+        if ($_GET['key'] !== SMARTY_GTM_CLEAR_LOGS_SECRET) {
+            wp_die(__('Invalid key provided.', 'smarty-gtm-events-for-woocommerce'));
+        }
+
+        // Proceed to clear the logs
+        smarty_gtm_clear_event_logs();
+        smarty_gtm_clear_error_logs();
+
+        // Set a flag to indicate that logs have been cleared
+        update_option('smarty_gtm_logs_cleared', true);
+    }
+}
+add_action('admin_init', 'smarty_gtm_clear_logs_on_demand');
+
+
+/**
+ * Display an admin notice when the logs have been cleared.
+ *
+ * @return void
+ */
+function smarty_gtm_display_clear_logs_notice() {
+    // Check if the logs have been cleared
+    if (get_option('smarty_gtm_logs_cleared')) {
+        echo '<div class="notice notice-success is-dismissible">';
+        echo '<p>' . __('SM - GTM Events for WooCommerce: Event and error logs have been cleared.', 'smarty-gtm-events-for-woocommerce') . '</p>';
+        echo '</div>';
+
+        // Delete the flag to prevent the notice from showing again
+        delete_option('smarty_gtm_logs_cleared');
+    }
+}
+add_action('admin_notices', 'smarty_gtm_display_clear_logs_notice');
+
+/**
+ * Clear event logs.
+ */
+function smarty_gtm_clear_event_logs() {
+    global $wpdb;
+    $table_name = $wpdb->prefix . 'smarty_gtm_event_log';
+    $wpdb->query("TRUNCATE TABLE $table_name");
+}
+
+/**
+ * Clear error logs.
+ */
+function smarty_gtm_clear_error_logs() {
+    global $wpdb;
+    $table_name = $wpdb->prefix . 'smarty_gtm_error_log';
+    $wpdb->query("TRUNCATE TABLE $table_name");
+}

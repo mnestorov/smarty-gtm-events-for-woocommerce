@@ -110,6 +110,20 @@ jQuery(document).ready(function ($) {
                 }
             });
         });
+
+        // Capture JavaScript errors
+        window.onerror = function (message, source, lineno, colno, error) {
+            var errorMessage = message + ' at ' + source + ':' + lineno + ':' + colno;
+            $.ajax({
+                url: smartyGTMData.ajax_url,
+                method: 'POST',
+                data: {
+                    action: 'smarty_gtm_log_js_error',
+                    error_message: errorMessage,
+                    nonce: smartyGTMData.nonce
+                }
+            });
+        }
     } else {
         console.error('smartyGTMData is not defined');
     }

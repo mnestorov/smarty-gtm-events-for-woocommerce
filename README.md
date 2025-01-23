@@ -1,16 +1,10 @@
-<p align="center"><a href="https://smartystudio.net" target="_blank"><img src="https://smartystudio.net/wp-content/uploads/2023/06/smarty-green-logo-small.png" width="100" alt="SmartyStudio Logo"></a></p>
-
-# Smarty Studio - GTM Events for WooCommerce
+# SM - GTM Events for WooCommerce
 
 [![Licence](https://img.shields.io/badge/LICENSE-GPL2.0+-blue)](./LICENSE)
 
-- Developed by: [Smarty Studio](https://smartystudio.net) | [Martin Nestorov](https://github.com/mnestorov)
-- Plugin URI: https://github.com/mnestorov/smarty-gtm-events-for-woocommerce
-
-## Support The Project
-
-Your support is greatly appreciated and will help ensure all of the projects continued development and improvement. Thank you for being a part of the community!
-You can send me money on Revolut by following this link: https://revolut.me/mnestorovv
+- **Developed by:** Martin Nestorov 
+    - Founder and Lead Developer at [Smarty Studio](https://smartystudio.net) | Explore more at [nestorov.dev](https://github.com/mnestorov)
+- **Plugin URI:** https://github.com/mnestorov/smarty-google-feed-generator
 
 ## Overview
 

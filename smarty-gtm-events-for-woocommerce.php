@@ -990,8 +990,8 @@ if (!function_exists('smarty_gtm_menu')) {
     function smarty_gtm_menu() {
         add_submenu_page(
             'woocommerce',
-            __('GTM Events for WooCommerce | Settings', 'smarty-gtm-events-for-woocommerce'),
-            __('GTM Events for WooCommerce', 'smarty-gtm-events-for-woocommerce'),
+            __('GTM Events | Settings', 'smarty-gtm-events-for-woocommerce'),
+            __('GTM Events', 'smarty-gtm-events-for-woocommerce'),
             'manage_options',
             'smarty-gtm-settings',
             'smarty_gtm_settings_page'
@@ -1045,7 +1045,7 @@ if (!function_exists('smarty_gtm_settings_page')) {
         // HTML
         ?>
         <div class="wrap">
-            <h1><?php esc_html_e('GTM Events for WooCommerce | Settings', 'smarty-gtm-events-for-woocommerce'); ?></h1>
+            <h1><?php esc_html_e('GTM Events | Settings', 'smarty-gtm-events-for-woocommerce'); ?></h1>
             <div id="smarty-gtm-settings-container">
                 <div>
                     <form action="options.php" method="post">

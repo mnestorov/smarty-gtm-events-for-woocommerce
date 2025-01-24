@@ -11,7 +11,7 @@
  * Text Domain:             smarty-gtm-events-for-woocommerce
  * Domain Path:             /languages
  * WC requires at least:    3.5.0
- * WC tested up to:         9.0.2
+ * WC tested up to:         9.4.2
  * Requires Plugins:		woocommerce
  */
 

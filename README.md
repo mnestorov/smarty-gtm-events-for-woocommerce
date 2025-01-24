@@ -234,6 +234,31 @@ Triggered when payment information is submitted during checkout. This event capt
 }
 ```
 
+### 9. `add_shipping_info`
+
+Triggered when shipping information is submitted during checkout. This event captures cart details and the selected shipping method.
+
+**Data Structure:**
+
+```javascript
+{
+    "event": "add_shipping_info",
+    "ecommerce": {
+        "currencyCode": "USD",
+        "shipping_method": "flat_rate",
+        "items": [
+            {
+                "id": "123",
+                "name": "Sample Product",
+                "price": "49.99",
+                "quantity": 1
+            },
+            // Other cart items...
+        ]
+    }
+}
+```
+
 ## Requirements
 
 - WordPress 4.7+ or higher.

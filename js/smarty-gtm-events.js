@@ -1,5 +1,5 @@
 jQuery(document).ready(function ($) {
-    if (typeof smartyGTMData !== 'undefined') {
+    if (typeof smartyGtmEvents !== 'undefined') {
         // Handle add to cart event
         $(document.body).on('added_to_cart', function (event, fragments, cart_hash, $button) {
             var productID = $button.data('product_id') || 0;
@@ -12,13 +12,13 @@ jQuery(document).ready(function ($) {
 
             // AJAX request to get the add_to_cart data
             $.ajax({
-                url: smartyGTMData.ajax_url,
+                url: smartyGtmEvents.ajax_url,
                 method: 'POST',
                 data: {
                     action: 'smarty_gtm_add_to_cart',
                     product_id: productID,
                     quantity: quantity,
-                    nonce: smartyGTMData.nonce
+                    nonce: smartyGtmEvents.nonce
                 },
                 success: function (response) {
                     if (response.success) {
@@ -82,12 +82,12 @@ jQuery(document).ready(function ($) {
 
             // AJAX request to get the product data
             $.ajax({
-                url: smartyGTMData.ajax_url,
+                url: smartyGtmEvents.ajax_url,
                 method: 'POST',
                 data: {
                     action: 'smarty_gtm_get_product_data',
                     product_id: productID,
-                    nonce: smartyGTMData.nonce
+                    nonce: smartyGtmEvents.nonce
                 },
                 success: function (response) {
                     if (response.success) {
@@ -115,16 +115,16 @@ jQuery(document).ready(function ($) {
         window.onerror = function (message, source, lineno, colno, error) {
             var errorMessage = message + ' at ' + source + ':' + lineno + ':' + colno;
             $.ajax({
-                url: smartyGTMData.ajax_url,
+                url: smartyGtmEvents.ajax_url,
                 method: 'POST',
                 data: {
                     action: 'smarty_gtm_log_js_error',
                     error_message: errorMessage,
-                    nonce: smartyGTMData.nonce
+                    nonce: smartyGtmEvents.nonce
                 }
             });
         }
     } else {
-        console.error('smartyGTMData is not defined');
+        console.error('smartyGtmEvents is not defined');
     }
 });

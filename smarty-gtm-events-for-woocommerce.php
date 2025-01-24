@@ -3,8 +3,8 @@
  * Plugin Name:             SM - GTM Events for WooCommerce
  * Plugin URI:              https://github.com/mnestorov/smarty-gtm-events-for-woocommerce
  * Description:             Pushes WooCommerce events to Google Tag Manager's dataLayer.
- * Version:                 1.0.0
- * Author:                  Smarty Studio | Martin Nestorov
+ * Version:                 1.0.1
+ * Author:                  Martin Nestorov
  * Author URI:              https://github.com/mnestorov
  * License:                 GPL-2.0+
  * License URI:             http://www.gnu.org/licenses/gpl-2.0.txt
@@ -23,34 +23,72 @@ if (!defined('WPINC')) {
 // Define your secret key to clear the logs.
 define('SMARTY_GTM_CLEAR_LOGS_SECRET', 'your-unique-secret-key');
 
-/**
- * Enqueue necessary JavaScript for dataLayer
- *
- * @return void
- */
-function smarty_gtm_events_enqueue_scripts() {
-    // Enqueue on WooCommerce pages, cart page, and checkout page
-    if (is_woocommerce() || is_cart() || is_checkout()) {
-        // Register the script
-        wp_register_script(
-            'smarty-gtm-script',
-            plugins_url('js/smarty-gtm-events.js', __FILE__),
-            array('jquery'),
-            '1.0.0',
-            true
-        );
-
-        // Enqueue the script
-        wp_enqueue_script('smarty-gtm-script');
-
-        // Generate a nonce and pass it to JavaScript
-        wp_localize_script('smarty-gtm-script', 'smartyGTMData', array(
-            'ajax_url' => admin_url('admin-ajax.php'),
-            'nonce'    => wp_create_nonce('smarty_gtm_nonce_action'),
-        ));
+if (!function_exists('smarty_gtm_get_nonce')) {
+    /**
+     * Generate and return the same nonce for both admin and front-end scripts.
+     *
+     * @return string The generated nonce.
+     */
+    function smarty_gtm_get_nonce() {
+        return wp_create_nonce('smarty_gtm_events_nonce');
     }
 }
-add_action('wp_enqueue_scripts', 'smarty_gtm_events_enqueue_scripts');
+
+if (!function_exists('smarty_gtm_enqueue_admin_scripts')) {
+    /**
+     * Enqueues admin scripts and styles for the settings page.
+     *
+     * This function enqueues the necessary JavaScript and CSS files for the
+     * admin settings pages of the Google Feed Generator plugin.
+     * It also localizes the script to pass AJAX-related data to the JavaScript file.
+     *
+     * @param string $hook_suffix The current admin page hook suffix.
+     */
+    function smarty_gtm_enqueue_admin_scripts($hook_suffix) {
+        // Only add to the admin page of the plugin
+        if ('woocommerce_page_smarty-gtm-settings' !== $hook_suffix) {
+            return;
+        }
+
+        wp_enqueue_script('smarty-gtm-admin-js', plugin_dir_url(__FILE__) . 'js/smarty-gtm-admin.js', array('jquery'), '1.0.0', true);
+        wp_enqueue_style('smarty-gtm-admin-css', plugin_dir_url(__FILE__) . 'css/smarty-gtm-admin.css', array(), '1.0.0');
+        wp_localize_script(
+            'smarty-gtm-admin-js',
+            'smartyGtmEvents',
+            array(
+                'ajaxUrl' => admin_url('admin-ajax.php'),
+                'siteUrl' => site_url(),
+                'nonce'   => smarty_gtm_get_nonce(),
+            )
+        );
+    }
+    add_action('admin_enqueue_scripts', 'smarty_gtm_enqueue_admin_scripts');
+}
+
+if (!function_exists('smarty_gtm_enqueue_front_scripts')) {
+    /**
+     * Enqueue necessary JavaScript for dataLayer
+     *
+     * @return void
+     */
+    function smarty_gtm_enqueue_front_scripts() {
+        // Enqueue on WooCommerce pages, cart page, and checkout page
+        if (is_woocommerce() || is_cart() || is_checkout()) {
+            // Register the script
+            wp_register_script('smarty-gtm-script', plugins_url('js/smarty-gtm-events.js', __FILE__), array('jquery'),'1.0.0', true);
+
+            // Enqueue the script
+            wp_enqueue_script('smarty-gtm-script');
+
+            // Generate a nonce and pass it to JavaScript
+            wp_localize_script('smarty-gtm-script', 'smartyGtmEvents', array(
+                'ajax_url' => admin_url('admin-ajax.php'),
+                'nonce'    => smarty_gtm_get_nonce(),
+            ));
+        }
+    }
+    add_action('wp_enqueue_scripts', 'smarty_gtm_enqueue_front_scripts');
+}
 
 /**
  * Get the unique site identifier (URL or name)
@@ -246,7 +284,7 @@ add_action('save_post', 'smarty_gtm_clear_product_list_cache');
  * @return void
  */
 function smarty_gtm_add_to_cart_ajax() {
-    check_ajax_referer('smarty_gtm_nonce_action', 'nonce');
+    check_ajax_referer('smarty_gtm_events_nonce', 'nonce');
 
     $product_id = isset($_POST['product_id']) ? absint($_POST['product_id']) : 0;
     $quantity   = isset($_POST['quantity']) ? intval($_POST['quantity']) : 1;
@@ -367,7 +405,7 @@ add_filter('woocommerce_cart_item_remove_link', 'smarty_gtm_add_data_to_remove_l
  * AJAX handler to get product data for remove_from_cart event
  */
 function smarty_gtm_get_product_data() {
-    check_ajax_referer('smarty_gtm_nonce_action', 'nonce');
+    check_ajax_referer('smarty_gtm_events_nonce', 'nonce');
 
     $product_id = isset($_POST['product_id']) ? absint($_POST['product_id']) : 0;
 
@@ -478,8 +516,9 @@ add_action('woocommerce_thankyou', 'smarty_gtm_purchase', 10, 1);
  */
 function smarty_gtm_add_payment_info() {
     if (is_checkout() && !is_order_received_page()) {
+        // Prepare cart items data
         $cart_items = [];
-        $cart_total = 0; // Keep it as integer
+        $cart_total = 0;
 
         foreach (WC()->cart->get_cart() as $index => $cart_item) {
             $product = $cart_item['data'];
@@ -520,6 +559,60 @@ function smarty_gtm_add_payment_info() {
     }
 }
 add_action('woocommerce_review_order_after_payment', 'smarty_gtm_add_payment_info');
+
+/**
+ * Push add_shipping_info event to the dataLayer when shipping information is submitted.
+ *
+ * @return void
+ */
+function smarty_gtm_add_shipping_info() {
+    if (is_checkout() && !is_order_received_page()) {
+        // Prepare cart items data
+        $cart_items = [];
+        $cart_total = 0;
+
+        foreach (WC()->cart->get_cart() as $index => $cart_item) {
+            $product = $cart_item['data'];
+            $quantity = intval($cart_item['quantity']);
+            $price = floatval($product->get_price());
+
+            $line_total = $price * $quantity;
+            $cart_total += $line_total;
+
+            $cart_items[] = [
+                'id' => $product->get_id(),
+                'name' => $product->get_name(),
+                'price' => $price,
+                'quantity' => $quantity,
+            ];
+        }
+
+        // Get selected shipping method
+        $shipping_method = isset(WC()->session->get('chosen_shipping_methods')[0]) ? WC()->session->get('chosen_shipping_methods')[0] : 'unknown';
+
+        // Prepare the data
+        $data = smarty_gtm_format_event_model(
+            'add_shipping_info',
+            uniqid('order_'),
+            $cart_total,
+            get_woocommerce_currency(),
+            number_format((float) WC()->cart->get_shipping_total(), 2, '.', ''),
+            number_format((float) WC()->cart->get_total_tax(), 2, '.', ''),
+            $cart_items,
+            'smarty-gtm-events-for-woocommerce'
+        );
+
+        // Add the shipping method to the event model
+        $data['eventModel']['shipping_method'] = $shipping_method;
+
+        // Push the event to the dataLayer
+        smarty_gtm_push_to_dataLayer($data);
+
+        // Log the event
+        smarty_gtm_log_event('add_shipping_info', $data);
+    }
+}
+add_action('woocommerce_review_order_after_shipping', 'smarty_gtm_add_shipping_info');
 
 /**
  * Push search event when a search is performed
@@ -884,4 +977,250 @@ function smarty_gtm_clear_error_logs() {
     global $wpdb;
     $table_name = $wpdb->prefix . 'smarty_gtm_error_log';
     $wpdb->query("TRUNCATE TABLE $table_name");
+}
+
+/**
+ * ADD A SETTINGS PAGE UNDER 'SETTINGS' -> 'GTM Events for WooCommerce'
+ * This page displays the debug.log contents.
+ */
+if (!function_exists('smarty_gtm_menu')) {
+    /**
+     * Register the custom settings page under 'Settings'.
+     */
+    function smarty_gtm_menu() {
+        add_submenu_page(
+            'woocommerce',
+            __('GTM Events for WooCommerce | Settings', 'smarty-gtm-events-for-woocommerce'),
+            __('GTM Events for WooCommerce', 'smarty-gtm-events-for-woocommerce'),
+            'manage_options',
+            'smarty-gtm-settings',
+            'smarty_gtm_settings_page'
+        );
+    }
+    add_action('admin_menu', 'smarty_gtm_menu');
+}
+
+if (!function_exists('smarty_gtm_register_settings')) {
+    /**
+     * Register plugin settings.
+     */
+    function smarty_gtm_register_settings() {
+        add_settings_section(
+            'smarty_gtm_section_general',
+            __('General', 'smarty-gtm-events-for-woocommerce'),
+            'smarty_gtm_section_general_callback',
+            'smarty-gtm-settings'
+        );
+    }
+    add_action('admin_init', 'smarty_gtm_register_settings');
+}
+
+if (!function_exists('smarty_gtm_section_general_callback')) {
+    /**
+     * Display the description for the general settings section.
+     *
+     * This function outputs the description text for the "General" section
+     * in the plugin's settings page.
+     *
+     * @return void
+     */
+    function smarty_gtm_section_general_callback() {
+        echo '<p>' . esc_html__('Below is the plugin events and error logs. No other settings are currently available.', 'smarty-auto-approve-reviews') . '</p>';
+    }
+}
+
+if (!function_exists('smarty_gtm_settings_page')) {
+    /**
+     * Render the plugin settings page with a user-friendly log display.
+     */
+    function smarty_gtm_settings_page() {
+        if (!current_user_can('manage_options')) {
+            wp_die(__('You do not have sufficient permissions to access this page.', 'smarty-auto-approve-reviews'));
+        }
+
+        // Get the recent logs from the database
+        $event_logs = smarty_gtm_get_recent_event_logs(50); // Retrieve the last 50 events
+        $error_logs = smarty_gtm_get_recent_errors(50); // Retrieve the last 50 errors
+
+        // HTML
+        ?>
+        <div class="wrap">
+            <h1><?php esc_html_e('GTM Events for WooCommerce | Settings', 'smarty-gtm-events-for-woocommerce'); ?></h1>
+            <div id="smarty-gtm-settings-container">
+                <div>
+                    <form action="options.php" method="post">
+                        <?php
+                        settings_fields('smarty-gtm-settings');
+                        do_settings_sections('smarty-gtm-settings');
+                        //submit_button(__('Save Settings', 'smarty-gtm-events-for-woocommerce'));
+                        ?>
+                    </form>
+                
+                    <!-- Event Logs Section -->
+                    <h2><?php esc_html_e('Event Logs', 'smarty-gtm-events-for-woocommerce'); ?></h2>
+                    <p><?php esc_html_e('Below are the most recent events logged by the plugin:', 'smarty-gtm-events-for-woocommerce'); ?></p>
+                    <table class="widefat fixed" style="margin-bottom: 20px;">
+                        <thead>
+                            <tr>
+                                <th style="width: 20%;"><?php esc_html_e('Event Time', 'smarty-gtm-events-for-woocommerce'); ?></th>
+                                <th style="width: 20%;"><?php esc_html_e('Event Name', 'smarty-gtm-events-for-woocommerce'); ?></th>
+                                <th style="width: 60%;"><?php esc_html_e('Details', 'smarty-gtm-events-for-woocommerce'); ?></th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <?php if (!empty($event_logs)) : ?>
+                                <?php foreach ($event_logs as $log) : ?>
+                                    <tr>
+                                        <td><?php echo esc_html($log['event_time']); ?></td>
+                                        <td><?php echo esc_html($log['event_name']); ?></td>
+                                        <td>
+                                            <details>
+                                                <summary style="cursor: pointer;"><?php esc_html_e('View Details', 'smarty-gtm-events-for-woocommerce'); ?></summary>
+                                                <pre><?php echo esc_html(print_r(unserialize($log['event_data']), true)); ?></pre>
+                                            </details>
+                                        </td>
+                                    </tr>
+                                <?php endforeach; ?>
+                            <?php else : ?>
+                                <tr>
+                                    <td colspan="3"><?php esc_html_e('No events logged yet.', 'smarty-gtm-events-for-woocommerce'); ?></td>
+                                </tr>
+                            <?php endif; ?>
+                        </tbody>
+                    </table>
+                    <!-- Error Logs Section -->
+                    <h2><?php esc_html_e('Error Logs', 'smarty-gtm-events-for-woocommerce'); ?></h2>
+                    <p><?php esc_html_e('Below are the most recent errors logged by the plugin:', 'smarty-gtm-events-for-woocommerce'); ?></p>
+                    <table class="widefat fixed">
+                        <thead>
+                            <tr>
+                                <th style="width: 30%;"><?php esc_html_e('Error Time', 'smarty-gtm-events-for-woocommerce'); ?></th>
+                                <th style="width: 70%;"><?php esc_html_e('Error Message', 'smarty-gtm-events-for-woocommerce'); ?></th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <?php if (!empty($error_logs)) : ?>
+                                <?php foreach ($error_logs as $error) : ?>
+                                    <tr>
+                                        <td><?php echo esc_html($error['error_time']); ?></td>
+                                        <td><?php echo esc_html($error['error_message']); ?></td>
+                                    </tr>
+                                <?php endforeach; ?>
+                            <?php else : ?>
+                                <tr>
+                                    <td colspan="2"><?php esc_html_e('No errors logged yet.', 'smarty-gtm-events-for-woocommerce'); ?></td>
+                                </tr>
+                            <?php endif; ?>
+                        </tbody>
+                    </table>
+                </div>
+                <div id="smarty-gtm-tabs-container">
+                    <div>
+                        <h2 class="smarty-gtm-nav-tab-wrapper">
+                            <a href="#smarty-gtm-documentation" class="smarty-gtm-nav-tab smarty-gtm-nav-tab-active"><?php esc_html_e('Documentation', 'smarty-gtm-events-for-woocommerce'); ?></a>
+                            <a href="#smarty-gtm-changelog" class="smarty-gtm-nav-tab"><?php esc_html_e('Changelog', 'smarty-gtm-events-for-woocommerce'); ?></a>
+                        </h2>
+                        <div id="smarty-gtm-documentation" class="smarty-gtm-tab-content active">
+                            <div class="smarty-gtm-view-more-container">
+                                <p><?php esc_html_e('Click "View More" to load the plugin documentation.', 'smarty-gtm-events-for-woocommerce'); ?></p>
+                                <button id="smarty-gtm-load-readme-btn" class="button button-primary">
+                                    <?php esc_html_e('View More', 'smarty-gtm-events-for-woocommerce'); ?>
+                                </button>
+                            </div>
+                            <div id="smarty-gtm-readme-content" style="margin-top: 20px;"></div>
+                        </div>
+                        <div id="smarty-gtm-changelog" class="smarty-gtm-tab-content">
+                            <div class="smarty-gtm-view-more-container">
+                                <p><?php esc_html_e('Click "View More" to load the plugin changelog.', 'smarty-gtm-events-for-woocommerce'); ?></p>
+                                <button id="smarty-gtm-load-changelog-btn" class="button button-primary">
+                                    <?php esc_html_e('View More', 'smarty-gtm-events-for-woocommerce'); ?>
+                                </button>
+                            </div>
+                            <div id="smarty-gtm-changelog-content" style="margin-top: 20px;"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div><?php
+    }   
+}
+
+/**
+ * Retrieve recent event logs from the database.
+ *
+ * @param int $limit Number of logs to retrieve.
+ * @return array Array of recent event logs.
+ */
+function smarty_gtm_get_recent_event_logs($limit = 50) {
+    global $wpdb;
+    $table_name = $wpdb->prefix . 'smarty_gtm_event_log';
+
+    $results = $wpdb->get_results(
+        $wpdb->prepare("SELECT event_time, event_name, event_data FROM $table_name ORDER BY event_time DESC LIMIT %d", $limit),
+        ARRAY_A
+    );
+
+    return $results;
+}
+
+if (!function_exists('smarty_gtm_load_readme')) {
+    /**
+     * AJAX handler to load and parse the README.md content.
+     */
+    function smarty_gtm_load_readme() {
+        check_ajax_referer('smarty_gtm_events_nonce', 'nonce');
+    
+        if (!current_user_can('manage_options')) {
+            wp_send_json_error('You do not have sufficient permissions.');
+        }
+    
+        $readme_path = plugin_dir_path(__FILE__) . 'README.md';
+        if (file_exists($readme_path)) {
+            // Include Parsedown library
+            if (!class_exists('Parsedown')) {
+                require_once plugin_dir_path(__FILE__) . 'libs/Parsedown.php';
+            }
+    
+            $parsedown = new Parsedown();
+            $markdown_content = file_get_contents($readme_path);
+            $html_content = $parsedown->text($markdown_content);
+    
+            // Remove <img> tags from the content
+            $html_content = preg_replace('/<img[^>]*>/', '', $html_content);
+    
+            wp_send_json_success($html_content);
+        } else {
+            wp_send_json_error('README.md file not found.');
+        }
+    }    
+    add_action('wp_ajax_smarty_gtm_load_readme', 'smarty_gtm_load_readme');
+}
+
+if (!function_exists('smarty_gtm_load_changelog')) {
+    /**
+     * AJAX handler to load and parse the CHANGELOG.md content.
+     */
+    function smarty_gtm_load_changelog() {
+        check_ajax_referer('smarty_gtm_events_nonce', 'nonce');
+    
+        if (!current_user_can('manage_options')) {
+            wp_send_json_error('You do not have sufficient permissions.');
+        }
+    
+        $changelog_path = plugin_dir_path(__FILE__) . 'CHANGELOG.md';
+        if (file_exists($changelog_path)) {
+            if (!class_exists('Parsedown')) {
+                require_once plugin_dir_path(__FILE__) . 'libs/Parsedown.php';
+            }
+    
+            $parsedown = new Parsedown();
+            $markdown_content = file_get_contents($changelog_path);
+            $html_content = $parsedown->text($markdown_content);
+    
+            wp_send_json_success($html_content);
+        } else {
+            wp_send_json_error('CHANGELOG.md file not found.');
+        }
+    }
+    add_action('wp_ajax_smarty_gtm_load_changelog', 'smarty_gtm_load_changelog');
 }

@@ -9,10 +9,7 @@
     word-wrap: break-word; 
     overflow-wrap: break-word; 
     max-width: 100%;
-}
-
-pre {
-    background-color: #2d2d2d; /* Dark gray background */
+	background-color: #2d2d2d; /* Dark gray background */
     color: #a8ff60; /* Light green text */
     padding: 15px;
     border-radius: 5px;

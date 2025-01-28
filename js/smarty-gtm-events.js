@@ -12,7 +12,7 @@ jQuery(document).ready(function ($) {
 
             // AJAX request to get the add_to_cart data
             $.ajax({
-                url: smartyGtmEvents.ajax_url,
+                url: smartyGtmEvents.ajaxUrl,
                 method: 'POST',
                 data: {
                     action: 'smarty_gtm_add_to_cart',
@@ -82,7 +82,7 @@ jQuery(document).ready(function ($) {
 
             // AJAX request to get the product data
             $.ajax({
-                url: smartyGtmEvents.ajax_url,
+                url: smartyGtmEvents.ajaxUrl,
                 method: 'POST',
                 data: {
                     action: 'smarty_gtm_get_product_data',
@@ -115,7 +115,7 @@ jQuery(document).ready(function ($) {
         window.onerror = function (message, source, lineno, colno, error) {
             var errorMessage = message + ' at ' + source + ':' + lineno + ':' + colno;
             $.ajax({
-                url: smartyGtmEvents.ajax_url,
+                url: smartyGtmEvents.ajaxUrl,
                 method: 'POST',
                 data: {
                     action: 'smarty_gtm_log_js_error',

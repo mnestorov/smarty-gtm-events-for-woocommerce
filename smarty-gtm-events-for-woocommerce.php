@@ -3,7 +3,7 @@
  * Plugin Name:             SM - GTM Events for WooCommerce
  * Plugin URI:              https://github.com/mnestorov/smarty-gtm-events-for-woocommerce
  * Description:             Pushes WooCommerce events to Google Tag Manager's dataLayer.
- * Version:                 1.0.1
+ * Version:                 1.0.2
  * Author:                  Martin Nestorov
  * Author URI:              https://github.com/mnestorov
  * License:                 GPL-2.0+
@@ -82,7 +82,7 @@ if (!function_exists('smarty_gtm_enqueue_front_scripts')) {
 
             // Generate a nonce and pass it to JavaScript
             wp_localize_script('smarty-gtm-script', 'smartyGtmEvents', array(
-                'ajax_url' => admin_url('admin-ajax.php'),
+                'ajaxUrl'  => admin_url('admin-ajax.php'),
                 'nonce'    => smarty_gtm_get_nonce(),
             ));
         }
@@ -317,8 +317,8 @@ function smarty_gtm_add_to_cart_ajax() {
 
     wp_send_json_success($data);
 }
-add_action('wp_ajax_nopriv_smarty_gtm_add_to_cart', 'smarty_gtm_add_to_cart_ajax');
 add_action('wp_ajax_smarty_gtm_add_to_cart', 'smarty_gtm_add_to_cart_ajax');
+add_action('wp_ajax_nopriv_smarty_gtm_add_to_cart', 'smarty_gtm_add_to_cart_ajax');
 
 /**
  * Push view_cart event when cart page is viewed
@@ -1038,11 +1038,10 @@ if (!function_exists('smarty_gtm_settings_page')) {
             wp_die(__('You do not have sufficient permissions to access this page.', 'smarty-auto-approve-reviews'));
         }
 
-        // Get the recent logs from the database
-        $event_logs = smarty_gtm_get_recent_event_logs(50); // Retrieve the last 50 events
-        $error_logs = smarty_gtm_get_recent_errors(50); // Retrieve the last 50 errors
+        // We no longer fetch event logs here (we’ll fetch them via AJAX pagination).
+        // But we still fetch the error logs normally:
+        $error_logs = smarty_gtm_get_recent_errors(50);
 
-        // HTML
         ?>
         <div class="wrap">
             <h1><?php esc_html_e('GTM Events | Settings', 'smarty-gtm-events-for-woocommerce'); ?></h1>
@@ -1050,75 +1049,76 @@ if (!function_exists('smarty_gtm_settings_page')) {
                 <div>
                     <form action="options.php" method="post">
                         <?php
-                        settings_fields('smarty-gtm-settings');
-                        do_settings_sections('smarty-gtm-settings');
-                        //submit_button(__('Save Settings', 'smarty-gtm-events-for-woocommerce'));
+                            settings_fields('smarty-gtm-settings');
+                            do_settings_sections('smarty-gtm-settings');
+                            //submit_button(__('Save Settings', 'smarty-gtm-events-for-woocommerce'));
                         ?>
                     </form>
-                
-                    <!-- Event Logs Section -->
+
+                    <!-- Event Logs Section (Now loaded via AJAX) -->
                     <h2><?php esc_html_e('Event Logs', 'smarty-gtm-events-for-woocommerce'); ?></h2>
                     <p><?php esc_html_e('Below are the most recent events logged by the plugin:', 'smarty-gtm-events-for-woocommerce'); ?></p>
-                    <table class="widefat fixed" style="margin-bottom: 20px;">
-                        <thead>
-                            <tr>
-                                <th style="width: 20%;"><?php esc_html_e('Event Time', 'smarty-gtm-events-for-woocommerce'); ?></th>
-                                <th style="width: 20%;"><?php esc_html_e('Event Name', 'smarty-gtm-events-for-woocommerce'); ?></th>
-                                <th style="width: 60%;"><?php esc_html_e('Details', 'smarty-gtm-events-for-woocommerce'); ?></th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            <?php if (!empty($event_logs)) : ?>
-                                <?php foreach ($event_logs as $log) : ?>
-                                    <tr>
-                                        <td><?php echo esc_html($log['event_time']); ?></td>
-                                        <td><?php echo esc_html($log['event_name']); ?></td>
-                                        <td>
-                                            <details>
-                                                <summary style="cursor: pointer;"><?php esc_html_e('View Details', 'smarty-gtm-events-for-woocommerce'); ?></summary>
-                                                <pre><?php echo esc_html(print_r(unserialize($log['event_data']), true)); ?></pre>
-                                            </details>
-                                        </td>
-                                    </tr>
-                                <?php endforeach; ?>
-                            <?php else : ?>
-                                <tr>
-                                    <td colspan="3"><?php esc_html_e('No events logged yet.', 'smarty-gtm-events-for-woocommerce'); ?></td>
-                                </tr>
-                            <?php endif; ?>
-                        </tbody>
-                    </table>
-                    <!-- Error Logs Section -->
+                    <div id="smarty-gtm-event-logs-table-container">
+                        <p><?php esc_html_e('Loading event logs...', 'smarty-gtm-events-for-woocommerce'); ?></p>
+                    </div>
+                    
+                    <!-- Simple pagination controls (initially hidden by `display: none`) -->
+                    <div id="smarty-gtm-event-logs-pagination" style="margin-top: 15px; display: none;">
+                        <button id="smarty-gtm-prev-page" class="button">
+                            <?php esc_html_e('Prev', 'smarty-gtm-events-for-woocommerce'); ?>
+                        </button>
+                        <span style="position: relative; margin: 0 15px; top: 5px;">
+                            <?php esc_html_e('Page', 'smarty-gtm-events-for-woocommerce'); ?>
+                            <span id="smarty-gtm-current-page">1</span>
+                            <?php esc_html_e('of', 'smarty-gtm-events-for-woocommerce'); ?>
+                            <span id="smarty-gtm-total-pages">1</span>
+                        </span>
+                        <button id="smarty-gtm-next-page" class="button">
+                            <?php esc_html_e('Next', 'smarty-gtm-events-for-woocommerce'); ?>
+                        </button>
+                    </div>
+
+                    <!-- Error Logs Section (unchanged for now) -->
                     <h2><?php esc_html_e('Error Logs', 'smarty-gtm-events-for-woocommerce'); ?></h2>
                     <p><?php esc_html_e('Below are the most recent errors logged by the plugin:', 'smarty-gtm-events-for-woocommerce'); ?></p>
-                    <table class="widefat fixed">
-                        <thead>
-                            <tr>
-                                <th style="width: 30%;"><?php esc_html_e('Error Time', 'smarty-gtm-events-for-woocommerce'); ?></th>
-                                <th style="width: 70%;"><?php esc_html_e('Error Message', 'smarty-gtm-events-for-woocommerce'); ?></th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            <?php if (!empty($error_logs)) : ?>
-                                <?php foreach ($error_logs as $error) : ?>
-                                    <tr>
-                                        <td><?php echo esc_html($error['error_time']); ?></td>
-                                        <td><?php echo esc_html($error['error_message']); ?></td>
-                                    </tr>
-                                <?php endforeach; ?>
-                            <?php else : ?>
+                    <div id="smarty-gtm-error-logs-table-container">
+                        <table class="widefat fixed" style="margin-bottom: 20px;">
+                            <thead>
                                 <tr>
-                                    <td colspan="2"><?php esc_html_e('No errors logged yet.', 'smarty-gtm-events-for-woocommerce'); ?></td>
+                                    <th style="width: 30%;"><?php esc_html_e('Error Time', 'smarty-gtm-events-for-woocommerce'); ?></th>
+                                    <th style="width: 70%;"><?php esc_html_e('Error Message', 'smarty-gtm-events-for-woocommerce'); ?></th>
                                 </tr>
-                            <?php endif; ?>
-                        </tbody>
-                    </table>
+                            </thead>
+                            <tbody>
+                                <?php if (!empty($error_logs)) : ?>
+                                    <?php foreach ($error_logs as $error) : ?>
+                                        <tr>
+                                            <td><?php echo esc_html($error['error_time']); ?></td>
+                                            <td><?php echo esc_html($error['error_message']); ?></td>
+                                        </tr>
+                                    <?php endforeach; ?>
+                                <?php else : ?>
+                                    <tr>
+                                        <td colspan="2">
+                                            <?php esc_html_e('No errors logged yet.', 'smarty-gtm-events-for-woocommerce'); ?>
+                                        </td>
+                                    </tr>
+                                <?php endif; ?>
+                            </tbody>
+                        </table>
+                    </div>
                 </div>
+
+                <!-- The Tabs Container (Documentation & Changelog) -->
                 <div id="smarty-gtm-tabs-container">
                     <div>
                         <h2 class="smarty-gtm-nav-tab-wrapper">
-                            <a href="#smarty-gtm-documentation" class="smarty-gtm-nav-tab smarty-gtm-nav-tab-active"><?php esc_html_e('Documentation', 'smarty-gtm-events-for-woocommerce'); ?></a>
-                            <a href="#smarty-gtm-changelog" class="smarty-gtm-nav-tab"><?php esc_html_e('Changelog', 'smarty-gtm-events-for-woocommerce'); ?></a>
+                            <a href="#smarty-gtm-documentation" class="smarty-gtm-nav-tab smarty-gtm-nav-tab-active">
+                                <?php esc_html_e('Documentation', 'smarty-gtm-events-for-woocommerce'); ?>
+                            </a>
+                            <a href="#smarty-gtm-changelog" class="smarty-gtm-nav-tab">
+                                <?php esc_html_e('Changelog', 'smarty-gtm-events-for-woocommerce'); ?>
+                            </a>
                         </h2>
                         <div id="smarty-gtm-documentation" class="smarty-gtm-tab-content active">
                             <div class="smarty-gtm-view-more-container">
@@ -1142,7 +1142,7 @@ if (!function_exists('smarty_gtm_settings_page')) {
                 </div>
             </div>
         </div><?php
-    }   
+    }
 }
 
 /**
@@ -1151,6 +1151,7 @@ if (!function_exists('smarty_gtm_settings_page')) {
  * @param int $limit Number of logs to retrieve.
  * @return array Array of recent event logs.
  */
+/* NOT USING
 function smarty_gtm_get_recent_event_logs($limit = 50) {
     global $wpdb;
     $table_name = $wpdb->prefix . 'smarty_gtm_event_log';
@@ -1162,6 +1163,86 @@ function smarty_gtm_get_recent_event_logs($limit = 50) {
 
     return $results;
 }
+*/
+
+/**
+ * Retrieve event logs from the database in a paginated fashion.
+ *
+ * @param int $page  Current page number.
+ * @param int $limit How many items per page.
+ *
+ * @return array {
+ *     @type array $logs  The retrieved log entries.
+ *     @type int   $total Total number of logs in the table.
+ * }
+ */
+function smarty_gtm_get_event_logs_paginated($page = 1, $limit = 10) {
+    global $wpdb;
+    $table_name = $wpdb->prefix . 'smarty_gtm_event_log';
+
+    // Calculate offset based on current page and limit
+    $offset = ($page - 1) * $limit;
+
+    // Get the total number of logs
+    $total = (int) $wpdb->get_var("SELECT COUNT(*) FROM {$table_name}");
+
+    // Retrieve only the logs for the requested page using LIMIT and OFFSET
+    $results = $wpdb->get_results(
+        $wpdb->prepare(
+            "SELECT event_time, event_name, event_data 
+            FROM {$table_name} 
+            ORDER BY event_time DESC
+            LIMIT %d, %d",
+            $offset,
+            $limit
+        ),
+        ARRAY_A
+    );
+
+    return [
+        'logs'  => $results,
+        'total' => $total,
+    ];
+}
+
+/**
+ * AJAX handler to return event logs for a given page in JSON format.
+ */
+function smarty_gtm_load_event_logs_paginated() {
+    check_ajax_referer('smarty_gtm_events_nonce', 'nonce');
+
+    if (!current_user_can('manage_options')) {
+        wp_send_json_error(__('You do not have sufficient permissions.', 'smarty-gtm-events-for-woocommerce'));
+    }
+
+    $page  = isset($_POST['page']) ? absint($_POST['page']) : 1;
+    $limit = 10;
+
+    // Retrieve rows
+    $paginated_result = smarty_gtm_get_event_logs_paginated($page, $limit);
+    $logs  = $paginated_result['logs'];
+    $total = $paginated_result['total'];
+
+    // For each row, unserialize and store as a JSON string
+    foreach ($logs as &$row) {
+        // Unserialize the event_data
+        $raw_data = maybe_unserialize($row['event_data']);
+        // Convert to pretty JSON (avoid HTML chars in output)
+        $json_str = json_encode($raw_data, JSON_UNESCAPED_SLASHES | JSON_PRETTY_PRINT);
+
+        // Save back so the JS can display it directly
+        $row['event_data'] = $json_str;
+    }
+    unset($row);
+
+    // Now return the updated logs
+    wp_send_json_success(array(
+        'logs'  => $logs,
+        'total' => $total,
+    ));
+}
+add_action('wp_ajax_smarty_gtm_load_event_logs_paginated', 'smarty_gtm_load_event_logs_paginated');
+add_action('wp_ajax_nopriv_smarty_gtm_load_event_logs_paginated', 'smarty_gtm_load_event_logs_paginated');
 
 if (!function_exists('smarty_gtm_load_readme')) {
     /**

@@ -1,10 +1,48 @@
-#smarty-gtm-settings-container > div > table {
-    background: #f9f9f9; 
+#smarty-gtm-settings-container > div > table,
+#smarty-gtm-settings-container > div > #smarty-gtm-event-logs-table-container table,
+#smarty-gtm-settings-container > div > #smarty-gtm-event-logs-table-container table > thead,
+#smarty-gtm-settings-container > div > #smarty-gtm-error-logs-table-container table,
+#smarty-gtm-settings-container > div > #smarty-gtm-error-logs-table-container table > thead {
+    background: #ffffff; 
     border: 1px solid #dddddd; 
     border-radius: 5px;
 }
 
-#smarty-gtm-settings-container >div > table pre {
+#smarty-gtm-settings-container > div > #smarty-gtm-event-logs-table-container table > thead,
+#smarty-gtm-settings-container > div > #smarty-gtm-event-logs-table-container table > thead > tr th:first-child,
+#smarty-gtm-settings-container > div > #smarty-gtm-event-logs-table-container table > thead > tr th,
+#smarty-gtm-settings-container > div > #smarty-gtm-event-logs-table-container table > thead > tr th:last-child
+#smarty-gtm-settings-container > div > #smarty-gtm-error-logs-table-container table > thead
+#smarty-gtm-settings-container > div > #smarty-gtm-error-logs-table-container table > thead > tr th:first-child,
+#smarty-gtm-settings-container > div > #smarty-gtm-error-logs-table-container table > thead > tr th,
+#smarty-gtm-settings-container > div > #smarty-gtm-error-logs-table-container table > thead > tr th:last-child, 
+#smarty-gtm-settings-container > div > #smarty-gtm-error-logs-table-container table > thead {
+    border-color: #dddddd;
+}
+
+#smarty-gtm-settings-container > div > #smarty-gtm-event-logs-table-container table > thead,
+#smarty-gtm-settings-container > div > #smarty-gtm-error-logs-table-container table > thead {
+    border-top-left-radius: 5px;
+    border-top-right-radius: 5px;
+}
+
+#smarty-gtm-settings-container > div > #smarty-gtm-event-logs-table-container table > thead > tr th:first-child,
+#smarty-gtm-settings-container > div > #smarty-gtm-error-logs-table-container table > thead > tr th:first-child {
+    border-top-left-radius: 5px;
+}
+
+#smarty-gtm-settings-container > div > #smarty-gtm-event-logs-table-container table > thead > tr th:last-child,
+#smarty-gtm-settings-container > div > #smarty-gtm-error-logs-table-container table > thead > tr th:last-child {
+    border-top-right-radius: 5px;
+}
+
+#smarty-gtm-settings-container > div > #smarty-gtm-event-logs-table-container table > thead > tr th,
+#smarty-gtm-settings-container > div > #smarty-gtm-error-logs-table-container table > thead > tr th {
+    color: #0073aa;
+    background: #f5f5f5;
+}
+
+#smarty-gtm-event-logs-table-container details > pre {
     white-space: pre-wrap; 
     word-wrap: break-word; 
     overflow-wrap: break-word; 

@@ -3,7 +3,7 @@
  * Plugin Name:             SM - GTM Events for WooCommerce
  * Plugin URI:              https://github.com/mnestorov/smarty-gtm-events-for-woocommerce
  * Description:             Pushes WooCommerce events to Google Tag Manager's dataLayer.
- * Version:                 1.0.2
+ * Version:                 1.0.3
  * Author:                  Martin Nestorov
  * Author URI:              https://github.com/mnestorov
  * License:                 GPL-2.0+
@@ -11,7 +11,7 @@
  * Text Domain:             smarty-gtm-events-for-woocommerce
  * Domain Path:             /languages
  * WC requires at least:    3.5.0
- * WC tested up to:         9.4.2
+ * WC tested up to:         9.6.0
  * Requires Plugins:		woocommerce
  */
 
@@ -19,6 +19,28 @@
 if (!defined('WPINC')) {
 	die;
 }
+
+/**
+ * HPOS Compatibility Declaration.
+ *
+ * This ensures that the plugin explicitly declares compatibility with 
+ * WooCommerce's High-Performance Order Storage (HPOS).
+ * 
+ * HPOS replaces the traditional `wp_posts` and `wp_postmeta` storage system 
+ * for orders with a dedicated database table structure, improving scalability 
+ * and performance.
+ * 
+ * More details:
+ * - WooCommerce HPOS Documentation: 
+ *   https://developer.woocommerce.com/2022/09/12/high-performance-order-storage-in-woocommerce/
+ * - Declaring Plugin Compatibility: 
+ *   https://github.com/woocommerce/woocommerce/wiki/High-Performance-Order-Storage-Upgrade-Recipe-Book#how-to-declare-compatibility
+ */
+add_action('before_woocommerce_init', function() {
+    if (class_exists('\Automattic\WooCommerce\Utilities\FeaturesUtil')) {
+        \Automattic\WooCommerce\Utilities\FeaturesUtil::declare_compatibility('custom_order_tables', __FILE__, true);
+    }
+});
 
 // Define your secret key to clear the logs.
 define('SMARTY_GTM_CLEAR_LOGS_SECRET', 'your-unique-secret-key');

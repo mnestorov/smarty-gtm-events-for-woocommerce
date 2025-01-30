@@ -17,3 +17,6 @@
 - Added better tab navigation and loading indicators for the settings page (README and Changelog sections).
 - Optimized pagination logic to improve performance and enhance user experience.
 - General code cleanup and minor bug fixes for smoother functionality.
+
+### 1.0.3 (2025.01.30)
+- Added [HPOS (High-Performance Order Storage)](https://woocommerce.com/document/high-performance-order-storage/) compatibility declaration. The HPOS replaces the old post-based order system with custom database tables. 

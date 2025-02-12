@@ -896,7 +896,7 @@ function smarty_gtm_get_recent_errors($limit = 5) {
 }
 
 /**
- * Display an admin notice if there are logged errors.
+ * Display an admin notice if there are logged errors or a simulated error.
  *
  * @return void
  */
@@ -912,6 +912,16 @@ function smarty_gtm_display_error_notice() {
         return;
     }
 
+    // Check for a simulated error
+    if (get_option('smarty_gtm_simulated_error_notice')) {
+        echo '<div class="notice notice-success is-dismissible">';
+        echo '<p><strong>SM - GTM Events for WooCommerce:</strong> Simulated error has been logged.</p>';
+        echo '</div>';
+
+        // Remove the notice after displaying it once
+        delete_option('smarty_gtm_simulated_error_notice');
+    }
+
     // Get recent errors
     $errors = smarty_gtm_get_recent_errors();
 
@@ -919,7 +929,7 @@ function smarty_gtm_display_error_notice() {
         // Prepare the error messages
         $error_messages = '';
         foreach ($errors as $error) {
-            $error_messages .= '<li>' . esc_html($error['error_time'] . ' - ' . $error['error_message']) . '</li>';
+            $error_messages .= '<li>' . esc_html($error['error_time']) . ' - ' . esc_html($error['error_message']) . '</li>';
         }
 
         // Display the admin notice
@@ -980,6 +990,13 @@ function smarty_gtm_log_error_on_demand() {
     if (isset($_GET['simulate_error'])) {
         $error_message = 'Simulated error triggered via URL parameter.';
         smarty_gtm_log_error($error_message);
+
+        // Set a temporary notice flag
+        update_option('smarty_gtm_simulated_error_notice', true);
+
+        // Redirect back to the settings page
+        wp_safe_redirect(admin_url('admin.php?page=smarty-gtm-settings'));
+        exit;
     }
 }
 add_action('admin_init', 'smarty_gtm_log_error_on_demand');
@@ -1193,6 +1210,16 @@ if (!function_exists('smarty_gtm_settings_page')) {
                             </tbody>
                         </table>
                     </div>
+
+                    <!-- Buttons for Managing Error Logs -->
+                    <div style="margin-top: 30px;">
+                        <button type="button" class="button button-danger" id="smarty-gtm-delete-error-logs">
+                            <?php esc_html_e('Delete', 'smarty-gtm-events-for-woocommerce'); ?>
+                        </button>
+                        <a href="?simulate_error=1" class="button button-primary">
+                            <?php esc_html_e('Simulate Error', 'smarty-gtm-events-for-woocommerce'); ?>
+                        </a>
+                    </div>
                 </div>
 
                 <!-- The Tabs Container (Documentation & Changelog) -->
@@ -1307,6 +1334,32 @@ if (!function_exists('smarty_gtm_delete_old_events')) {
         }
     }
     add_action('wp_ajax_smarty_gtm_delete_old_events', 'smarty_gtm_delete_old_events');
+}
+
+if (!function_exists('smarty_gtm_delete_error_logs')) {
+    /**
+     * Deletes all error logs from the database.
+     *
+     * This function is triggered via an AJAX request from the admin panel.
+     * It ensures proper security checks before deleting all error log entries.
+     *
+     * @return void Outputs a JSON response indicating success or failure.
+     */
+    function smarty_gtm_delete_error_logs() {
+        check_ajax_referer('smarty_gtm_events_nonce', 'nonce');
+
+        if (!current_user_can('manage_options')) {
+            wp_send_json_error(array('message' => __('Unauthorized access', 'smarty-gtm-events-for-woocommerce')));
+        }
+
+        global $wpdb;
+        $table_name = $wpdb->prefix . 'smarty_gtm_error_log';
+
+        $wpdb->query("TRUNCATE TABLE $table_name");
+
+        wp_send_json_success();
+    }
+    add_action('wp_ajax_smarty_gtm_delete_error_logs', 'smarty_gtm_delete_error_logs');
 }
 
 if (!function_exists('smarty_gtm_load_event_logs_paginated')) {

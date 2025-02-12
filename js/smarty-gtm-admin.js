@@ -165,7 +165,37 @@ jQuery(document).ready(function($) {
                 }
             },
             complete: function() {
-                $('#smarty-gtm-delete-old-events').text('Delete Old Events').prop('disabled', false);
+                $('#smarty-gtm-delete-old-events').text('Delete').prop('disabled', false);
+            }
+        });
+    });
+
+    $('#smarty-gtm-delete-error-logs').on('click', function() {
+        var confirmDelete = confirm('Are you sure you want to delete all error logs? This action cannot be undone.');
+        if (!confirmDelete) {
+            return;
+        }
+
+        $.ajax({
+            url: smartyGtmEvents.ajaxUrl,
+            type: 'POST',
+            data: {
+                action: 'smarty_gtm_delete_error_logs',
+                nonce: smartyGtmEvents.nonce
+            },
+            beforeSend: function() {
+                $('#smarty-gtm-delete-error-logs').text('Deleting...').prop('disabled', true);
+            },
+            success: function(response) {
+                if (response.success) {
+                    alert('All error logs have been deleted.');
+                    location.reload();
+                } else {
+                    alert('Error: ' + response.data.message);
+                }
+            },
+            complete: function() {
+                $('#smarty-gtm-delete-error-logs').text('Delete').prop('disabled', false);
             }
         });
     });

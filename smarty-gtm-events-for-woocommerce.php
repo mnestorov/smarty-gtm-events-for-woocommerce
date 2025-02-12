@@ -112,695 +112,743 @@ if (!function_exists('smarty_gtm_enqueue_front_scripts')) {
     add_action('wp_enqueue_scripts', 'smarty_gtm_enqueue_front_scripts');
 }
 
-/**
- * Get the unique site identifier (URL or name)
- *
- * @return array Associative array containing 'siteUrl' and 'siteName'
- */
-function smarty_gtm_get_site_identifier() {
-    return array(
-        'siteUrl'  => get_site_url(),
-        'siteName' => get_bloginfo('name'),
-    );
-}
-
-/**
- * Utility function to push data to the dataLayer
- *
- * @param array $data Data to push to dataLayer
- * @return void
- */
-function smarty_gtm_push_to_dataLayer($data) {
-    echo "\n<!-- SM - GTM Events for WooCommerce Plugin: Start Data Layer Event -->\n";
-    echo '<script type="text/javascript">';
-    echo 'window.dataLayer = window.dataLayer || []; window.dataLayer.push(' . wp_json_encode($data) . ');';
-    echo '</script>';
-    echo "\n<!-- SM - GTM Events for WooCommerce Plugin: End Data Layer Event -->\n";
-}
-
-/**
- * Format event model for GTM data layer
- *
- * @param string $event Event name
- * @param string $transaction_id Transaction ID
- * @param float $value Transaction value
- * @param string $currency Currency code
- * @param float $shipping Shipping cost
- * @param float $tax Tax amount
- * @param array $items Array of items
- * @param string $event_source Event source identifier
- * @return array Formatted event model
- */
-function smarty_gtm_format_event_model($event, $transaction_id = '', $value = '', $currency = '', $shipping = '', $tax = '', $items = array(), $event_source = 'plugin') {
-    $site_info = smarty_gtm_get_site_identifier();
-    
-    $customer_data = array();
-    if (is_user_logged_in()) {
-        $user = wp_get_current_user();
-        $customer_data['user_id'] = $user->ID;
-        $customer_data['user_role'] = implode(', ', $user->roles);
-    }
-
-    return array(
-        'event'      => $event,
-        'eventModel' => array(
-            'transaction_id' => $transaction_id,
-            'affiliation'    => $site_info['siteUrl'],
-            'value'          => $value,
-            'currency'       => $currency,
-            'shipping'       => $shipping,
-            'tax'            => $tax,
-            'items'          => $items,
-            'event_source'   => $event_source,
-        ),
-        'customer' => $customer_data,
-    );
-}
-
-/**
- * Format product item data
- *
- * @param WC_Product $product WooCommerce product object
- * @param int $quantity Quantity of the product
- * @param int $list_position Position in the list
- * @return array Formatted product item data
- */
-function smarty_gtm_format_product_item($product, $quantity = 1, $list_position = 1) {
-    // Get product categories
-    $categories = wp_get_post_terms($product->get_id(), 'product_cat', array('fields' => 'names'));
-    $category   = !empty($categories) ? implode('/', $categories) : '';
-
-    // Get product brand if available (assuming it's stored as a custom attribute 'brand')
-    $brand = $product->get_attribute('brand');
-
-    // Get product variant if available (for variable products)
-    $variant = '';
-    if ($product->is_type('variation')) {
-        $attributes = $product->get_variation_attributes();
-        $variant    = implode(', ', $attributes);
-    }
-
-    return array(
-        'id'            => $product->get_id(),
-        'name'          => $product->get_name(),
-        'list_name'     => 'Order',
-        'brand'         => $brand ?: '',
-        'category'      => $category,
-        'variant'       => $variant,
-        'list_position' => (string) $list_position,
-        'price'         => (float) $product->get_price(),
-        'quantity'      => (int) $quantity,
-        'SKU'           => $product->get_sku() ?: '',
-        'dimensions'    => array(
-            'length' => $product->get_length() ?: '',
-            'width'  => $product->get_width() ?: '',
-            'height' => $product->get_height() ?: '',
-        ),
-        'weight'        => $product->get_weight(),
-        'custom_fields' => get_post_meta( $product->get_id() ),
-    );
-}
-
-/**
- * Push view_item event on single product pages
- *
- * @return void
- */
-function smarty_gtm_view_item() {
-    if (is_product()) {
-        global $product;
-        $data = smarty_gtm_format_event_model(
-            'view_item',
-            '',
-            (float) $product->get_price(),
-            get_woocommerce_currency(),
-            '',
-            '',
-            array( smarty_gtm_format_product_item($product)),
-            'smarty-gtm-events-for-woocommerce'
+if (!function_exists('smarty_gtm_get_site_identifier')) {
+    /**
+     * Get the unique site identifier (URL or name)
+     *
+     * @return array Associative array containing 'siteUrl' and 'siteName'
+     */
+    function smarty_gtm_get_site_identifier() {
+        return array(
+            'siteUrl'  => get_site_url(),
+            'siteName' => get_bloginfo('name'),
         );
-
-        smarty_gtm_push_to_dataLayer($data);
-
-        smarty_gtm_log_event('view_item', $data);
     }
 }
-add_action('woocommerce_after_single_product', 'smarty_gtm_view_item');
 
-/**
- * Push view_item_list event on product list pages
- *
- * @return void
- */
-function smarty_gtm_view_item_list() {
-    if (is_shop() || is_product_category() || is_product_tag()) {
-        global $wp_query;
-        $products = get_transient('smarty_gtm_product_list');
+if (!function_exists('smarty_gtm_push_to_dataLayer')) {
+    /**
+     * Utility function to push data to the dataLayer
+     *
+     * @param array $data Data to push to dataLayer
+     * @return void
+     */
+    function smarty_gtm_push_to_dataLayer($data) {
+        echo "\n<!-- SM - GTM Events for WooCommerce Plugin: Start Data Layer Event -->\n";
+        echo '<script type="text/javascript">';
+        echo 'window.dataLayer = window.dataLayer || []; window.dataLayer.push(' . wp_json_encode($data) . ');';
+        echo '</script>';
+        echo "\n<!-- SM - GTM Events for WooCommerce Plugin: End Data Layer Event -->\n";
+    }
+}
 
-        if (false === $products) {
-            $products = array();
-            foreach ($wp_query->posts as $index => $post) {
-                $product = wc_get_product($post->ID);
-                if ($product) {
-                    $products[] = smarty_gtm_format_product_item($product, 1, $index + 1);
+if (!function_exists('smarty_gtm_format_event_model')) {
+    /**
+     * Format event model for GTM data layer
+     *
+     * @param string $event Event name
+     * @param string $transaction_id Transaction ID
+     * @param float $value Transaction value
+     * @param string $currency Currency code
+     * @param float $shipping Shipping cost
+     * @param float $tax Tax amount
+     * @param array $items Array of items
+     * @param string $event_source Event source identifier
+     * @return array Formatted event model
+     */
+    function smarty_gtm_format_event_model($event, $transaction_id = '', $value = '', $currency = '', $shipping = '', $tax = '', $items = array(), $event_source = 'plugin') {
+        $site_info = smarty_gtm_get_site_identifier();
+        
+        $customer_data = array();
+        if (is_user_logged_in()) {
+            $user = wp_get_current_user();
+            $customer_data['user_id'] = $user->ID;
+            $customer_data['user_role'] = implode(', ', $user->roles);
+        }
+
+        return array(
+            'event'      => $event,
+            'eventModel' => array(
+                'transaction_id' => $transaction_id,
+                'affiliation'    => $site_info['siteUrl'],
+                'value'          => $value,
+                'currency'       => $currency,
+                'shipping'       => $shipping,
+                'tax'            => $tax,
+                'items'          => $items,
+                'event_source'   => $event_source,
+            ),
+            'customer' => $customer_data,
+        );
+    }
+}
+
+if (!function_exists('smarty_gtm_format_product_item')) {
+    /**
+     * Format product item data
+     *
+     * @param WC_Product $product WooCommerce product object
+     * @param int $quantity Quantity of the product
+     * @param int $list_position Position in the list
+     * @return array Formatted product item data
+     */
+    function smarty_gtm_format_product_item($product, $quantity = 1, $list_position = 1) {
+        // Get product categories
+        $categories = wp_get_post_terms($product->get_id(), 'product_cat', array('fields' => 'names'));
+        $category   = !empty($categories) ? implode('/', $categories) : '';
+
+        // Get product brand if available (assuming it's stored as a custom attribute 'brand')
+        $brand = $product->get_attribute('brand');
+
+        // Get product variant if available (for variable products)
+        $variant = '';
+        if ($product->is_type('variation')) {
+            $attributes = $product->get_variation_attributes();
+            $variant    = implode(', ', $attributes);
+        }
+
+        return array(
+            'id'            => $product->get_id(),
+            'name'          => $product->get_name(),
+            'list_name'     => 'Order',
+            'brand'         => $brand ?: '',
+            'category'      => $category,
+            'variant'       => $variant,
+            'list_position' => (string) $list_position,
+            'price'         => (float) $product->get_price(),
+            'quantity'      => (int) $quantity,
+            'SKU'           => $product->get_sku() ?: '',
+            'dimensions'    => array(
+                'length' => $product->get_length() ?: '',
+                'width'  => $product->get_width() ?: '',
+                'height' => $product->get_height() ?: '',
+            ),
+            'weight'        => $product->get_weight(),
+            'custom_fields' => get_post_meta( $product->get_id() ),
+        );
+    }
+}
+
+if (!function_exists('smarty_gtm_view_item')) {
+    /**
+     * Push view_item event on single product pages
+     *
+     * @return void
+     */
+    function smarty_gtm_view_item() {
+        if (is_product()) {
+            global $product;
+            $data = smarty_gtm_format_event_model(
+                'view_item',
+                '',
+                (float) $product->get_price(),
+                get_woocommerce_currency(),
+                '',
+                '',
+                array( smarty_gtm_format_product_item($product)),
+                'smarty-gtm-events-for-woocommerce'
+            );
+
+            smarty_gtm_push_to_dataLayer($data);
+
+            smarty_gtm_log_event('view_item', $data);
+        }
+    }
+    add_action('woocommerce_after_single_product', 'smarty_gtm_view_item');
+}
+
+if (!function_exists('smarty_gtm_view_item_list')) {
+    /**
+     * Push view_item_list event on product list pages
+     *
+     * @return void
+     */
+    function smarty_gtm_view_item_list() {
+        if (is_shop() || is_product_category() || is_product_tag()) {
+            global $wp_query;
+            $products = get_transient('smarty_gtm_product_list');
+
+            if (false === $products) {
+                $products = array();
+                foreach ($wp_query->posts as $index => $post) {
+                    $product = wc_get_product($post->ID);
+                    if ($product) {
+                        $products[] = smarty_gtm_format_product_item($product, 1, $index + 1);
+                    }
                 }
+                // Cache the products data for 10 minutes
+                set_transient('smarty_gtm_product_list', $products, 10 * MINUTE_IN_SECONDS);
             }
-            // Cache the products data for 10 minutes
-            set_transient('smarty_gtm_product_list', $products, 10 * MINUTE_IN_SECONDS);
+
+            $data = smarty_gtm_format_event_model(
+                'view_item_list',
+                '',
+                '',
+                get_woocommerce_currency(),
+                '',
+                '',
+                $products,
+                'smarty-gtm-events-for-woocommerce'
+            );
+
+            smarty_gtm_push_to_dataLayer($data);
+
+            smarty_gtm_log_event('view_item_list', $data);
+        }
+    }
+    add_action('woocommerce_after_shop_loop', 'smarty_gtm_view_item_list');
+}
+
+if (!function_exists('smarty_gtm_clear_product_list_cache')) {
+    /**
+     * Clear product list cache when a product is updated
+     *
+     * @param int $post_id Post ID
+     * @return void
+     */
+    function smarty_gtm_clear_product_list_cache($post_id) {
+        if (get_post_type($post_id) == 'product') {
+            delete_transient('smarty_gtm_product_list');
+        }
+    }
+    add_action('save_post', 'smarty_gtm_clear_product_list_cache');
+}
+
+if (!function_exists('smarty_gtm_add_to_cart_ajax')) {
+    /**
+     * Push add_to_cart event when product is added to cart via AJAX
+     *
+     * @return void
+     */
+    function smarty_gtm_add_to_cart_ajax() {
+        check_ajax_referer('smarty_gtm_events_nonce', 'nonce');
+
+        $product_id = isset($_POST['product_id']) ? absint($_POST['product_id']) : 0;
+        $quantity   = isset($_POST['quantity']) ? intval($_POST['quantity']) : 1;
+
+        if ($product_id <= 0) {
+            smarty_gtm_log_error($error_message);
+            wp_send_json_error(array('error' => __('Product ID is missing or invalid', 'smarty-gtm-events-for-woocommerce')));
+            return;
+        }
+
+        $product = wc_get_product($product_id);
+        if (!$product) {
+            smarty_gtm_log_error($error_message);
+            wp_send_json_error(array('error' => __('Product not found', 'smarty-gtm-events-for-woocommerce')));
+            return;
         }
 
         $data = smarty_gtm_format_event_model(
-            'view_item_list',
+            'add_to_cart',
             '',
-            '',
+            (float) $product->get_price() * $quantity,
             get_woocommerce_currency(),
             '',
             '',
-            $products,
+            array( smarty_gtm_format_product_item($product, $quantity) ),
             'smarty-gtm-events-for-woocommerce'
         );
 
-        smarty_gtm_push_to_dataLayer($data);
+        smarty_gtm_log_event('add_to_cart', $data);
 
-        smarty_gtm_log_event('view_item_list', $data);
+        wp_send_json_success($data);
     }
+    add_action('wp_ajax_smarty_gtm_add_to_cart', 'smarty_gtm_add_to_cart_ajax');
+    add_action('wp_ajax_nopriv_smarty_gtm_add_to_cart', 'smarty_gtm_add_to_cart_ajax');
 }
-add_action('woocommerce_after_shop_loop', 'smarty_gtm_view_item_list');
 
-/**
- * Clear product list cache when a product is updated
- *
- * @param int $post_id Post ID
- * @return void
- */
-function smarty_gtm_clear_product_list_cache($post_id) {
-    if (get_post_type($post_id) == 'product') {
-        delete_transient('smarty_gtm_product_list');
-    }
-}
-add_action('save_post', 'smarty_gtm_clear_product_list_cache');
+if (!function_exists('smarty_gtm_view_cart')) {
+    /**
+     * Push view_cart event when cart page is viewed
+     *
+     * @return void
+     */
+    function smarty_gtm_view_cart() {
+        if (is_cart()) {
+            $cart_items = array();
+            $index      = 0;
+            foreach (WC()->cart->get_cart() as $cart_item) {
+                $product = $cart_item['data'];
+                $index++;
+                $cart_items[] = smarty_gtm_format_product_item($product, $cart_item['quantity'], $index);
+            }
 
-/**
- * Push add_to_cart event when product is added to cart via AJAX
- *
- * @return void
- */
-function smarty_gtm_add_to_cart_ajax() {
-    check_ajax_referer('smarty_gtm_events_nonce', 'nonce');
+            $data = smarty_gtm_format_event_model(
+                'view_cart',
+                '',
+                WC()->cart->get_cart_contents_total(),
+                get_woocommerce_currency(),
+                WC()->cart->get_shipping_total(),
+                WC()->cart->get_total_tax(),
+                $cart_items,
+                'smarty-gtm-events-for-woocommerce'
+            );
 
-    $product_id = isset($_POST['product_id']) ? absint($_POST['product_id']) : 0;
-    $quantity   = isset($_POST['quantity']) ? intval($_POST['quantity']) : 1;
+            smarty_gtm_push_to_dataLayer($data);
 
-    if ($product_id <= 0) {
-        smarty_gtm_log_error($error_message);
-        wp_send_json_error(array('error' => __('Product ID is missing or invalid', 'smarty-gtm-events-for-woocommerce')));
-        return;
-    }
-
-    $product = wc_get_product($product_id);
-    if (!$product) {
-        smarty_gtm_log_error($error_message);
-        wp_send_json_error(array('error' => __('Product not found', 'smarty-gtm-events-for-woocommerce')));
-        return;
-    }
-
-    $data = smarty_gtm_format_event_model(
-        'add_to_cart',
-        '',
-        (float) $product->get_price() * $quantity,
-        get_woocommerce_currency(),
-        '',
-        '',
-        array( smarty_gtm_format_product_item($product, $quantity) ),
-        'smarty-gtm-events-for-woocommerce'
-    );
-
-    smarty_gtm_log_event('add_to_cart', $data);
-
-    wp_send_json_success($data);
-}
-add_action('wp_ajax_smarty_gtm_add_to_cart', 'smarty_gtm_add_to_cart_ajax');
-add_action('wp_ajax_nopriv_smarty_gtm_add_to_cart', 'smarty_gtm_add_to_cart_ajax');
-
-/**
- * Push view_cart event when cart page is viewed
- *
- * @return void
- */
-function smarty_gtm_view_cart() {
-    if (is_cart()) {
-        $cart_items = array();
-        $index      = 0;
-        foreach (WC()->cart->get_cart() as $cart_item) {
-            $product = $cart_item['data'];
-            $index++;
-            $cart_items[] = smarty_gtm_format_product_item($product, $cart_item['quantity'], $index);
+            smarty_gtm_log_event('view_cart', $data);
         }
+    }
+    add_action('woocommerce_after_cart_table', 'smarty_gtm_view_cart');
+}
+
+if (!function_exists('smarty_gtm_remove_from_cart')) {
+    /**
+     * Push remove_from_cart event when a product is removed from cart
+     *
+     * @param string   $cart_item_key Key of the cart item being removed
+     * @param WC_Cart  $cart          The cart object
+     * @return void
+     */
+    function smarty_gtm_remove_from_cart($cart_item_key, $cart) {
+        $cart_item = $cart->get_cart_item($cart_item_key);
+        $product = $cart_item['data'];
 
         $data = smarty_gtm_format_event_model(
-            'view_cart',
+            'remove_from_cart',
             '',
-            WC()->cart->get_cart_contents_total(),
+            $product->get_price() * $cart_item['quantity'],
             get_woocommerce_currency(),
-            WC()->cart->get_shipping_total(),
-            WC()->cart->get_total_tax(),
-            $cart_items,
+            '',
+            '',
+            [smarty_gtm_format_product_item($product, $cart_item['quantity'])],
             'smarty-gtm-events-for-woocommerce'
         );
 
-        smarty_gtm_push_to_dataLayer($data);
+        add_action('wp_footer', function() use ($data) {
+            smarty_gtm_push_to_dataLayer($data);
+        });
 
-        smarty_gtm_log_event('view_cart', $data);
+        smarty_gtm_log_event('remove_from_cart', $data);
     }
+    add_action('woocommerce_remove_cart_item', 'smarty_gtm_remove_from_cart', 10, 2);
 }
-add_action('woocommerce_after_cart_table', 'smarty_gtm_view_cart');
 
-/**
- * Push remove_from_cart event when a product is removed from cart
- *
- * @param string   $cart_item_key Key of the cart item being removed
- * @param WC_Cart  $cart          The cart object
- * @return void
- */
-function smarty_gtm_remove_from_cart($cart_item_key, $cart) {
-    $cart_item = $cart->get_cart_item($cart_item_key);
-    $product = $cart_item['data'];
-
-    $data = smarty_gtm_format_event_model(
-        'remove_from_cart',
-        '',
-        $product->get_price() * $cart_item['quantity'],
-        get_woocommerce_currency(),
-        '',
-        '',
-        [smarty_gtm_format_product_item($product, $cart_item['quantity'])],
-        'smarty-gtm-events-for-woocommerce'
-    );
-
-    add_action('wp_footer', function() use ($data) {
-        smarty_gtm_push_to_dataLayer($data);
-    });
-
-    smarty_gtm_log_event('remove_from_cart', $data);
-}
-add_action('woocommerce_remove_cart_item', 'smarty_gtm_remove_from_cart', 10, 2);
-
-/**
- * Add data-product_id attribute to cart item remove links
- *
- * @param string $url The original remove link HTML
- * @param string $cart_item_key The cart item key
- * @return string Modified remove link HTML
- */
-function smarty_gtm_add_data_to_remove_link($url, $cart_item_key) {
-    $cart_item = WC()->cart->get_cart_item($cart_item_key);
-    if ($cart_item && isset($cart_item['product_id'])) {
-        $product_id = $cart_item['product_id'];
-        // Add data-product_id attribute
-        $url = str_replace('<a ', '<a data-product_id="' . $product_id . '" ', $url);
+if (!function_exists('smarty_gtm_add_data_to_remove_link')) {
+    /**
+     * Add data-product_id attribute to cart item remove links
+     *
+     * @param string $url The original remove link HTML
+     * @param string $cart_item_key The cart item key
+     * @return string Modified remove link HTML
+     */
+    function smarty_gtm_add_data_to_remove_link($url, $cart_item_key) {
+        $cart_item = WC()->cart->get_cart_item($cart_item_key);
+        if ($cart_item && isset($cart_item['product_id'])) {
+            $product_id = $cart_item['product_id'];
+            // Add data-product_id attribute
+            $url = str_replace('<a ', '<a data-product_id="' . $product_id . '" ', $url);
+        }
+        return $url;
     }
-    return $url;
+    add_filter('woocommerce_cart_item_remove_link', 'smarty_gtm_add_data_to_remove_link', 10, 2);
 }
-add_filter('woocommerce_cart_item_remove_link', 'smarty_gtm_add_data_to_remove_link', 10, 2);
 
-/**
- * AJAX handler to get product data for remove_from_cart event
- */
-function smarty_gtm_get_product_data() {
-    check_ajax_referer('smarty_gtm_events_nonce', 'nonce');
+if (!function_exists('smarty_gtm_get_product_data')) {
+    /**
+     * AJAX handler to get product data for remove_from_cart event
+     */
+    function smarty_gtm_get_product_data() {
+        check_ajax_referer('smarty_gtm_events_nonce', 'nonce');
 
-    $product_id = isset($_POST['product_id']) ? absint($_POST['product_id']) : 0;
+        $product_id = isset($_POST['product_id']) ? absint($_POST['product_id']) : 0;
 
-    if ($product_id <= 0) {
-        smarty_gtm_log_error($error_message);
-        wp_send_json_error(array('error' => __('Product ID is missing or invalid', 'smarty-gtm-events-for-woocommerce')));
-        return;
+        if ($product_id <= 0) {
+            smarty_gtm_log_error($error_message);
+            wp_send_json_error(array('error' => __('Product ID is missing or invalid', 'smarty-gtm-events-for-woocommerce')));
+            return;
+        }
+
+        $product = wc_get_product($product_id);
+        if (!$product) {
+            smarty_gtm_log_error($error_message);
+            wp_send_json_error(array('error' => __('Product not found', 'smarty-gtm-events-for-woocommerce')));
+            return;
+        }
+
+        // Since we don't have quantity info, assume 1
+        $product_data = smarty_gtm_format_product_item($product, 1);
+
+        wp_send_json_success($product_data);
     }
-
-    $product = wc_get_product($product_id);
-    if (!$product) {
-        smarty_gtm_log_error($error_message);
-        wp_send_json_error(array('error' => __('Product not found', 'smarty-gtm-events-for-woocommerce')));
-        return;
-    }
-
-    // Since we don't have quantity info, assume 1
-    $product_data = smarty_gtm_format_product_item($product, 1);
-
-    wp_send_json_success($product_data);
+    add_action('wp_ajax_nopriv_smarty_gtm_get_product_data', 'smarty_gtm_get_product_data');
+    add_action('wp_ajax_smarty_gtm_get_product_data', 'smarty_gtm_get_product_data');
 }
-add_action('wp_ajax_nopriv_smarty_gtm_get_product_data', 'smarty_gtm_get_product_data');
-add_action('wp_ajax_smarty_gtm_get_product_data', 'smarty_gtm_get_product_data');
 
-/**
- * Push begin_checkout event when checkout is started
- *
- * @return void
- */
-function smarty_gtm_begin_checkout() {
-    if (is_checkout() && ! is_order_received_page()) {
-        $cart_items = array();
-        $cart_total = 0.0;
+if (!function_exists('smarty_gtm_begin_checkout')) {
+    /**
+     * Push begin_checkout event when checkout is started
+     *
+     * @return void
+     */
+    function smarty_gtm_begin_checkout() {
+        if (is_checkout() && ! is_order_received_page()) {
+            $cart_items = array();
+            $cart_total = 0.0;
 
+            $index = 0;
+            foreach (WC()->cart->get_cart() as $cart_item) {
+                $product   = $cart_item['data'];
+                $quantity  = (int) $cart_item['quantity'];
+                $price     = (float) $product->get_price();
+                $cart_total += $price * $quantity;
+                $index++;
+                $cart_items[] = smarty_gtm_format_product_item($product, $quantity, $index);
+            }
+
+            $data = smarty_gtm_format_event_model(
+                'begin_checkout',
+                uniqid('order_'),
+                number_format($cart_total, 2, '.', ''),
+                get_woocommerce_currency(),
+                number_format((float) WC()->cart->get_shipping_total(), 2, '.', ''),
+                number_format((float) WC()->cart->get_total_tax(), 2, '.', ''),
+                $cart_items,
+                'smarty-gtm-events-for-woocommerce'
+            );
+
+            smarty_gtm_push_to_dataLayer($data);
+
+            smarty_gtm_log_event('begin_checkout', $data);
+        }
+    }
+    add_action('woocommerce_before_checkout_form', 'smarty_gtm_begin_checkout');
+}
+
+if (!function_exists('smarty_gtm_purchase')) {
+    /**
+     * Push purchase event on order confirmation page
+     *
+     * @param int $order_id Order ID
+     * @return void
+     */
+    function smarty_gtm_purchase($order_id) {
+        $order = wc_get_order($order_id);
+        if (!$order) {
+            return;
+        }
+
+        $items = array();
         $index = 0;
-        foreach (WC()->cart->get_cart() as $cart_item) {
-            $product   = $cart_item['data'];
-            $quantity  = (int) $cart_item['quantity'];
-            $price     = (float) $product->get_price();
-            $cart_total += $price * $quantity;
-            $index++;
-            $cart_items[] = smarty_gtm_format_product_item($product, $quantity, $index);
+        foreach ($order->get_items() as $item) {
+            $product = $item->get_product();
+            if ($product) {
+                $index++;
+                $items[] = smarty_gtm_format_product_item($product, $item->get_quantity(), $index);
+            }
         }
 
         $data = smarty_gtm_format_event_model(
-            'begin_checkout',
-            uniqid('order_'),
-            number_format($cart_total, 2, '.', ''),
-            get_woocommerce_currency(),
-            number_format((float) WC()->cart->get_shipping_total(), 2, '.', ''),
-            number_format((float) WC()->cart->get_total_tax(), 2, '.', ''),
-            $cart_items,
+            'purchase',
+            $order->get_order_number(),
+            (float) $order->get_total(),
+            $order->get_currency(),
+            (float) $order->get_shipping_total(),
+            (float) $order->get_total_tax(),
+            $items,
             'smarty-gtm-events-for-woocommerce'
         );
 
         smarty_gtm_push_to_dataLayer($data);
 
-        smarty_gtm_log_event('begin_checkout', $data);
+        smarty_gtm_log_event('purchase', $data);
     }
+    add_action('woocommerce_thankyou', 'smarty_gtm_purchase', 10, 1);
 }
-add_action('woocommerce_before_checkout_form', 'smarty_gtm_begin_checkout');
 
-/**
- * Push purchase event on order confirmation page
- *
- * @param int $order_id Order ID
- * @return void
- */
-function smarty_gtm_purchase($order_id) {
-    $order = wc_get_order($order_id);
-    if (!$order) {
-        return;
-    }
+if (!function_exists('smarty_gtm_add_payment_info')) {
+    /**
+     * Push add_payment_info event to dataLayer when payment information is submitted in the checkout process
+     *
+     * @param array $posted_data Posted data from checkout form
+     * @param WP_Error $errors Validation errors
+     * @return void
+     */
+    function smarty_gtm_add_payment_info() {
+        if (is_checkout() && !is_order_received_page()) {
+            // Prepare cart items data
+            $cart_items = [];
+            $cart_total = 0;
 
-    $items = array();
-    $index = 0;
-    foreach ($order->get_items() as $item) {
-        $product = $item->get_product();
-        if ($product) {
-            $index++;
-            $items[] = smarty_gtm_format_product_item($product, $item->get_quantity(), $index);
+            foreach (WC()->cart->get_cart() as $index => $cart_item) {
+                $product = $cart_item['data'];
+                $quantity = intval($cart_item['quantity']);
+                $price = floatval($product->get_price());
+
+                $line_total = $price * $quantity;
+                $cart_total += $line_total;
+
+                $cart_items[] = [
+                    'id' => $product->get_id(),
+                    'name' => $product->get_name(),
+                    'price' => $price,
+                    'quantity' => $quantity,
+                ];
+            }
+
+            $payment_method = WC()->session->get('chosen_payment_method') ?: 'unknown';
+            
+            $data = smarty_gtm_format_event_model(
+                'add_payment_info',
+                uniqid('order_'),
+                $cart_total,
+                get_woocommerce_currency(),
+                number_format((float) WC()->cart->get_shipping_total(), 2, '.', ''),
+                number_format((float) WC()->cart->get_total_tax(), 2, '.', ''),
+                $cart_items,
+                'smarty-gtm-events-for-woocommerce'
+            );
+
+            // Add additional field for payment type
+            $data['eventModel']['payment_type'] = $payment_method;
+
+            // Push the formatted data to the dataLayer
+            smarty_gtm_push_to_dataLayer($data);
+
+            smarty_gtm_log_event('add_payment_info', $data);
         }
     }
-
-    $data = smarty_gtm_format_event_model(
-        'purchase',
-        $order->get_order_number(),
-        (float) $order->get_total(),
-        $order->get_currency(),
-        (float) $order->get_shipping_total(),
-        (float) $order->get_total_tax(),
-        $items,
-        'smarty-gtm-events-for-woocommerce'
-    );
-
-    smarty_gtm_push_to_dataLayer($data);
-
-    smarty_gtm_log_event('purchase', $data);
+    add_action('woocommerce_review_order_after_payment', 'smarty_gtm_add_payment_info');
 }
-add_action('woocommerce_thankyou', 'smarty_gtm_purchase', 10, 1);
 
-/**
- * Push add_payment_info event to dataLayer when payment information is submitted in the checkout process
- *
- * @param array $posted_data Posted data from checkout form
- * @param WP_Error $errors Validation errors
- * @return void
- */
-function smarty_gtm_add_payment_info() {
-    if (is_checkout() && !is_order_received_page()) {
-        // Prepare cart items data
-        $cart_items = [];
-        $cart_total = 0;
+if (!function_exists('smarty_gtm_add_shipping_info')) {
+    /**
+     * Push add_shipping_info event to the dataLayer when shipping information is submitted.
+     *
+     * @return void
+     */
+    function smarty_gtm_add_shipping_info() {
+        if (is_checkout() && !is_order_received_page()) {
+            // Prepare cart items data
+            $cart_items = [];
+            $cart_total = 0;
 
-        foreach (WC()->cart->get_cart() as $index => $cart_item) {
-            $product = $cart_item['data'];
-            $quantity = intval($cart_item['quantity']);
-            $price = floatval($product->get_price());
+            foreach (WC()->cart->get_cart() as $index => $cart_item) {
+                $product = $cart_item['data'];
+                $quantity = intval($cart_item['quantity']);
+                $price = floatval($product->get_price());
 
-            $line_total = $price * $quantity;
-            $cart_total += $line_total;
+                $line_total = $price * $quantity;
+                $cart_total += $line_total;
 
-            $cart_items[] = [
-                'id' => $product->get_id(),
-                'name' => $product->get_name(),
-                'price' => $price,
-                'quantity' => $quantity,
-            ];
+                $cart_items[] = [
+                    'id' => $product->get_id(),
+                    'name' => $product->get_name(),
+                    'price' => $price,
+                    'quantity' => $quantity,
+                ];
+            }
+
+            // Get selected shipping method
+            $shipping_method = isset(WC()->session->get('chosen_shipping_methods')[0]) ? WC()->session->get('chosen_shipping_methods')[0] : 'unknown';
+
+            // Prepare the data
+            $data = smarty_gtm_format_event_model(
+                'add_shipping_info',
+                uniqid('order_'),
+                $cart_total,
+                get_woocommerce_currency(),
+                number_format((float) WC()->cart->get_shipping_total(), 2, '.', ''),
+                number_format((float) WC()->cart->get_total_tax(), 2, '.', ''),
+                $cart_items,
+                'smarty-gtm-events-for-woocommerce'
+            );
+
+            // Add the shipping method to the event model
+            $data['eventModel']['shipping_method'] = $shipping_method;
+
+            // Push the event to the dataLayer
+            smarty_gtm_push_to_dataLayer($data);
+
+            // Log the event
+            smarty_gtm_log_event('add_shipping_info', $data);
         }
-
-        $payment_method = WC()->session->get('chosen_payment_method') ?: 'unknown';
-		
-		$data = smarty_gtm_format_event_model(
-			'add_payment_info',
-			uniqid('order_'),
-			$cart_total,
-			get_woocommerce_currency(),
-            number_format((float) WC()->cart->get_shipping_total(), 2, '.', ''),
-            number_format((float) WC()->cart->get_total_tax(), 2, '.', ''),
-			$cart_items,
-			'smarty-gtm-events-for-woocommerce'
-		);
-
-        // Add additional field for payment type
-        $data['eventModel']['payment_type'] = $payment_method;
-
-        // Push the formatted data to the dataLayer
-        smarty_gtm_push_to_dataLayer($data);
-
-        smarty_gtm_log_event('add_payment_info', $data);
     }
+    add_action('woocommerce_review_order_after_shipping', 'smarty_gtm_add_shipping_info');
 }
-add_action('woocommerce_review_order_after_payment', 'smarty_gtm_add_payment_info');
 
-/**
- * Push add_shipping_info event to the dataLayer when shipping information is submitted.
- *
- * @return void
- */
-function smarty_gtm_add_shipping_info() {
-    if (is_checkout() && !is_order_received_page()) {
-        // Prepare cart items data
-        $cart_items = [];
-        $cart_total = 0;
-
-        foreach (WC()->cart->get_cart() as $index => $cart_item) {
-            $product = $cart_item['data'];
-            $quantity = intval($cart_item['quantity']);
-            $price = floatval($product->get_price());
-
-            $line_total = $price * $quantity;
-            $cart_total += $line_total;
-
-            $cart_items[] = [
-                'id' => $product->get_id(),
-                'name' => $product->get_name(),
-                'price' => $price,
-                'quantity' => $quantity,
-            ];
+if (!function_exists('smarty_gtm_site_search_tracking')) {
+    /**
+     * Push search event when a search is performed
+     *
+     * @return void
+     */
+    function smarty_gtm_site_search_tracking() {
+        if (is_search()) {
+            add_action('wp_footer', 'smarty_gtm_push_search_event');
         }
+    }
+    add_action('template_redirect', 'smarty_gtm_site_search_tracking');
+}
 
-        // Get selected shipping method
-        $shipping_method = isset(WC()->session->get('chosen_shipping_methods')[0]) ? WC()->session->get('chosen_shipping_methods')[0] : 'unknown';
-
-        // Prepare the data
-        $data = smarty_gtm_format_event_model(
-            'add_shipping_info',
-            uniqid('order_'),
-            $cart_total,
-            get_woocommerce_currency(),
-            number_format((float) WC()->cart->get_shipping_total(), 2, '.', ''),
-            number_format((float) WC()->cart->get_total_tax(), 2, '.', ''),
-            $cart_items,
-            'smarty-gtm-events-for-woocommerce'
+if (!function_exists('smarty_gtm_push_search_event')) {
+    /**
+     * Outputs the search event script
+     *
+     * @return void
+     */
+    function smarty_gtm_push_search_event() {
+        $search_query = get_search_query();
+        $data = array(
+            'event' => 'search',
+            'search_term' => $search_query,
         );
-
-        // Add the shipping method to the event model
-        $data['eventModel']['shipping_method'] = $shipping_method;
-
-        // Push the event to the dataLayer
         smarty_gtm_push_to_dataLayer($data);
 
-        // Log the event
-        smarty_gtm_log_event('add_shipping_info', $data);
+        smarty_gtm_log_event('search', $data);
     }
 }
-add_action('woocommerce_review_order_after_shipping', 'smarty_gtm_add_shipping_info');
 
-/**
- * Push search event when a search is performed
- *
- * @return void
- */
-function smarty_gtm_site_search_tracking() {
-    if (is_search()) {
-        add_action('wp_footer', 'smarty_gtm_push_search_event');
+if (!function_exists('smarty_gtm_coupon_applied')) {
+    /**
+     * Push apply_coupon event when a coupon is applied
+     *
+     * @param string $coupon_code Applied coupon code
+     * @return void
+     */
+    function smarty_gtm_coupon_applied($coupon_code) {
+        $data = array(
+            'event' => 'apply_coupon',
+            'coupon' => $coupon_code,
+        );
+        smarty_gtm_push_to_dataLayer($data);
+
+        smarty_gtm_log_event('apply_coupon', $data);
+    }
+    add_action('woocommerce_applied_coupon', 'smarty_gtm_coupon_applied');
+}
+
+if (!function_exists('smarty_gtm_order_refunded')) {
+    /**
+     * Push refund event when an order is refunded
+     *
+     * @param int $order_id Order ID
+     * @param int $refund_id Refund ID
+     * @return void
+     */
+    function smarty_gtm_order_refunded($order_id, $refund_id) {
+        $order = wc_get_order($order_id);
+        $refund = wc_get_order($refund_id);
+
+        $data = array(
+            'event' => 'refund',
+            'transaction_id' => $order->get_order_number(),
+            'value' => (float) $refund->get_amount(),
+            'currency' => $order->get_currency(),
+        );
+        smarty_gtm_push_to_dataLayer($data);
+
+        smarty_gtm_log_event('refund', $data);
+    }
+    add_action('woocommerce_order_refunded', 'smarty_gtm_order_refunded', 10, 2);
+}
+
+if (!function_exists('smarty_gtm_create_event_log_table')) {
+    /**
+     * Create the event log database table upon plugin activation.
+     *
+     * @return void
+     */
+    function smarty_gtm_create_event_log_table() {
+        global $wpdb;
+        $table_name = $wpdb->prefix . 'smarty_gtm_event_log';
+
+        $charset_collate = $wpdb->get_charset_collate();
+
+        $sql = "CREATE TABLE IF NOT EXISTS $table_name (
+            id BIGINT(20) UNSIGNED NOT NULL AUTO_INCREMENT,
+            event_time DATETIME NOT NULL,
+            event_name VARCHAR(255) NOT NULL,
+            user_id BIGINT(20) UNSIGNED DEFAULT NULL,
+            user_role VARCHAR(255) DEFAULT NULL,
+            event_data LONGTEXT DEFAULT NULL,
+            PRIMARY KEY (id),
+            INDEX (event_time),
+            INDEX (event_name)
+        ) $charset_collate;";
+
+        require_once(ABSPATH . 'wp-admin/includes/upgrade.php');
+        dbDelta($sql);
     }
 }
-add_action('template_redirect', 'smarty_gtm_site_search_tracking');
 
-/**
- * Outputs the search event script
- *
- * @return void
- */
-function smarty_gtm_push_search_event() {
-    $search_query = get_search_query();
-    $data = array(
-        'event' => 'search',
-        'search_term' => $search_query,
-    );
-    smarty_gtm_push_to_dataLayer($data);
+if (!function_exists('smarty_gtm_create_error_log_table')) {
+    /**
+     * Create the error log database table upon plugin activation.
+     *
+     * @return void
+     */
+    function smarty_gtm_create_error_log_table() {
+        global $wpdb;
+        $table_name = $wpdb->prefix . 'smarty_gtm_error_log';
 
-    smarty_gtm_log_event('search', $data);
-}
+        $charset_collate = $wpdb->get_charset_collate();
 
-/**
- * Push apply_coupon event when a coupon is applied
- *
- * @param string $coupon_code Applied coupon code
- * @return void
- */
-function smarty_gtm_coupon_applied($coupon_code) {
-    $data = array(
-        'event' => 'apply_coupon',
-        'coupon' => $coupon_code,
-    );
-    smarty_gtm_push_to_dataLayer($data);
+        $sql = "CREATE TABLE IF NOT EXISTS $table_name (
+            id BIGINT(20) UNSIGNED NOT NULL AUTO_INCREMENT,
+            error_time DATETIME NOT NULL,
+            error_message TEXT NOT NULL,
+            PRIMARY KEY (id),
+            INDEX (error_time)
+        ) $charset_collate;";
 
-    smarty_gtm_log_event('apply_coupon', $data);
-}
-add_action('woocommerce_applied_coupon', 'smarty_gtm_coupon_applied');
-
-/**
- * Push refund event when an order is refunded
- *
- * @param int $order_id Order ID
- * @param int $refund_id Refund ID
- * @return void
- */
-function smarty_gtm_order_refunded($order_id, $refund_id) {
-    $order = wc_get_order($order_id);
-    $refund = wc_get_order($refund_id);
-
-    $data = array(
-        'event' => 'refund',
-        'transaction_id' => $order->get_order_number(),
-        'value' => (float) $refund->get_amount(),
-        'currency' => $order->get_currency(),
-    );
-    smarty_gtm_push_to_dataLayer($data);
-
-    smarty_gtm_log_event('refund', $data);
-}
-add_action('woocommerce_order_refunded', 'smarty_gtm_order_refunded', 10, 2);
-
-/**
- * Create the event log database table upon plugin activation.
- *
- * @return void
- */
-function smarty_gtm_create_event_log_table() {
-    global $wpdb;
-    $table_name = $wpdb->prefix . 'smarty_gtm_event_log';
-
-    $charset_collate = $wpdb->get_charset_collate();
-
-    $sql = "CREATE TABLE IF NOT EXISTS $table_name (
-        id BIGINT(20) UNSIGNED NOT NULL AUTO_INCREMENT,
-        event_time DATETIME NOT NULL,
-        event_name VARCHAR(255) NOT NULL,
-        user_id BIGINT(20) UNSIGNED DEFAULT NULL,
-        user_role VARCHAR(255) DEFAULT NULL,
-        event_data LONGTEXT DEFAULT NULL,
-        PRIMARY KEY (id),
-        INDEX (event_time),
-        INDEX (event_name)
-    ) $charset_collate;";
-
-    require_once(ABSPATH . 'wp-admin/includes/upgrade.php');
-    dbDelta($sql);
-}
-
-/**
- * Create the error log database table upon plugin activation.
- *
- * @return void
- */
-function smarty_gtm_create_error_log_table() {
-    global $wpdb;
-    $table_name = $wpdb->prefix . 'smarty_gtm_error_log';
-
-    $charset_collate = $wpdb->get_charset_collate();
-
-    $sql = "CREATE TABLE IF NOT EXISTS $table_name (
-        id BIGINT(20) UNSIGNED NOT NULL AUTO_INCREMENT,
-        error_time DATETIME NOT NULL,
-        error_message TEXT NOT NULL,
-        PRIMARY KEY (id),
-        INDEX (error_time)
-    ) $charset_collate;";
-
-    require_once(ABSPATH . 'wp-admin/includes/upgrade.php');
-    dbDelta($sql);
-}
-
-/**
- * Plugin activation hook to create necessary database tables.
- *
- * @return void
- */
-function smarty_gtm_plugin_activation() {
-    smarty_gtm_create_event_log_table();
-    smarty_gtm_create_error_log_table();
-}
-register_activation_hook(__FILE__, 'smarty_gtm_plugin_activation');
-
-/**
- * Log an event to the database.
- *
- * @param string $event_name Event name.
- * @param array  $event_data Event data.
- * @return void
- */
-function smarty_gtm_log_event($event_name, $event_data = array()) {
-    global $wpdb;
-    $table_name = $wpdb->prefix . 'smarty_gtm_event_log';
-
-    $user_id = null;
-    $user_role = null;
-    if (is_user_logged_in()) {
-        $user = wp_get_current_user();
-        $user_id = $user->ID;
-        $user_role = implode(', ', $user->roles);
+        require_once(ABSPATH . 'wp-admin/includes/upgrade.php');
+        dbDelta($sql);
     }
+}
 
-    $wpdb->insert(
-        $table_name,
-        array(
-            'event_time' => current_time('mysql'),
-            'event_name' => $event_name,
-            'user_id' => $user_id,
-            'user_role' => $user_role,
-            'event_data' => maybe_serialize($event_data),
-        ),
-        array(
-            '%s',
-            '%s',
-            '%d',
-            '%s',
-            '%s',
-        )
-    );
+if (!function_exists('smarty_gtm_plugin_activation')) {
+    /**
+     * Plugin activation hook to create necessary database tables.
+     *
+     * @return void
+     */
+    function smarty_gtm_plugin_activation() {
+        smarty_gtm_create_event_log_table();
+        smarty_gtm_create_error_log_table();
+    }
+    register_activation_hook(__FILE__, 'smarty_gtm_plugin_activation');
+}
+
+if (!function_exists('smarty_gtm_log_event')) {
+    /**
+     * Log an event to the database.
+     *
+     * @param string $event_name Event name.
+     * @param array  $event_data Event data.
+     * @return void
+     */
+    function smarty_gtm_log_event($event_name, $event_data = array()) {
+        global $wpdb;
+        $table_name = $wpdb->prefix . 'smarty_gtm_event_log';
+
+        $user_id = null;
+        $user_role = null;
+        if (is_user_logged_in()) {
+            $user = wp_get_current_user();
+            $user_id = $user->ID;
+            $user_role = implode(', ', $user->roles);
+        }
+
+        $wpdb->insert(
+            $table_name,
+            array(
+                'event_time' => current_time('mysql'),
+                'event_name' => $event_name,
+                'user_id' => $user_id,
+                'user_role' => $user_role,
+                'event_data' => maybe_serialize($event_data),
+            ),
+            array(
+                '%s',
+                '%s',
+                '%d',
+                '%s',
+                '%s',
+            )
+        );
+    }
 }
 
 /**
@@ -964,7 +1012,6 @@ function smarty_gtm_clear_logs_on_demand() {
 }
 add_action('admin_init', 'smarty_gtm_clear_logs_on_demand');
 
-
 /**
  * Display an admin notice when the logs have been cleared.
  *
@@ -1080,6 +1127,7 @@ if (!function_exists('smarty_gtm_settings_page')) {
                     <!-- Event Logs Section (Now loaded via AJAX) -->
                     <h2><?php esc_html_e('Event Logs', 'smarty-gtm-events-for-woocommerce'); ?></h2>
                     <p><?php esc_html_e('Below are the most recent events logged by the plugin:', 'smarty-gtm-events-for-woocommerce'); ?></p>
+                    
                     <div id="smarty-gtm-event-logs-table-container">
                         <p><?php esc_html_e('Loading event logs...', 'smarty-gtm-events-for-woocommerce'); ?></p>
                     </div>
@@ -1099,6 +1147,22 @@ if (!function_exists('smarty_gtm_settings_page')) {
                             <?php esc_html_e('Next', 'smarty-gtm-events-for-woocommerce'); ?>
                         </button>
                     </div>
+
+                    <!-- Delete Events  Section -->
+                    <form id="smarty-gtm-clear-old-events-form" class="smarty-gtm-delete-events-form">
+                        <label for="smarty-gtm-delete-older-than" class="smarty-gtm-delete-events-label">
+                            <?php esc_html_e('Delete events older than:', 'smarty-gtm-events-for-woocommerce'); ?>
+                        </label>
+                        <select id="smarty-gtm-delete-older-than" class="smarty-gtm-delete-events-select" name="smarty-gtm-delete-older-than">
+                            <option value="7">7 <?php esc_html_e('days', 'smarty-gtm-events-for-woocommerce'); ?></option>
+                            <option value="30">30 <?php esc_html_e('days', 'smarty-gtm-events-for-woocommerce'); ?></option>
+                            <option value="90">90 <?php esc_html_e('days', 'smarty-gtm-events-for-woocommerce'); ?></option>
+                            <option value="365">1 <?php esc_html_e('year', 'smarty-gtm-events-for-woocommerce'); ?></option>
+                        </select>
+                        <button type="button" class="button button-secondary" id="smarty-gtm-delete-old-events">
+                            <?php esc_html_e('Delete', 'smarty-gtm-events-for-woocommerce'); ?>
+                        </button>
+                    </form>
 
                     <!-- Error Logs Section (unchanged for now) -->
                     <h2><?php esc_html_e('Error Logs', 'smarty-gtm-events-for-woocommerce'); ?></h2>
@@ -1167,104 +1231,124 @@ if (!function_exists('smarty_gtm_settings_page')) {
     }
 }
 
-/**
- * Retrieve recent event logs from the database.
- *
- * @param int $limit Number of logs to retrieve.
- * @return array Array of recent event logs.
- */
-/* NOT USING
-function smarty_gtm_get_recent_event_logs($limit = 50) {
-    global $wpdb;
-    $table_name = $wpdb->prefix . 'smarty_gtm_event_log';
+if (!function_exists('smarty_gtm_get_event_logs_paginated')) {
+    /**
+     * Retrieve event logs from the database in a paginated fashion.
+     *
+     * @param int $page  Current page number.
+     * @param int $limit How many items per page.
+     *
+     * @return array
+     * @type array $logs  The retrieved log entries.
+     * @type int   $total Total number of logs in the table.
+     */
+    function smarty_gtm_get_event_logs_paginated($page = 1, $limit = 10) {
+        global $wpdb;
+        $table_name = $wpdb->prefix . 'smarty_gtm_event_log';
 
-    $results = $wpdb->get_results(
-        $wpdb->prepare("SELECT event_time, event_name, event_data FROM $table_name ORDER BY event_time DESC LIMIT %d", $limit),
-        ARRAY_A
-    );
+        // Calculate offset based on current page and limit
+        $offset = ($page - 1) * $limit;
 
-    return $results;
-}
-*/
+        // Get the total number of logs
+        $total = (int) $wpdb->get_var("SELECT COUNT(*) FROM {$table_name}");
 
-/**
- * Retrieve event logs from the database in a paginated fashion.
- *
- * @param int $page  Current page number.
- * @param int $limit How many items per page.
- *
- * @return array {
- *     @type array $logs  The retrieved log entries.
- *     @type int   $total Total number of logs in the table.
- * }
- */
-function smarty_gtm_get_event_logs_paginated($page = 1, $limit = 10) {
-    global $wpdb;
-    $table_name = $wpdb->prefix . 'smarty_gtm_event_log';
+        // Retrieve only the logs for the requested page using LIMIT and OFFSET
+        $results = $wpdb->get_results(
+            $wpdb->prepare(
+                "SELECT event_time, event_name, event_data 
+                FROM {$table_name} 
+                ORDER BY event_time DESC
+                LIMIT %d, %d",
+                $offset,
+                $limit
+            ),
+            ARRAY_A
+        );
 
-    // Calculate offset based on current page and limit
-    $offset = ($page - 1) * $limit;
-
-    // Get the total number of logs
-    $total = (int) $wpdb->get_var("SELECT COUNT(*) FROM {$table_name}");
-
-    // Retrieve only the logs for the requested page using LIMIT and OFFSET
-    $results = $wpdb->get_results(
-        $wpdb->prepare(
-            "SELECT event_time, event_name, event_data 
-            FROM {$table_name} 
-            ORDER BY event_time DESC
-            LIMIT %d, %d",
-            $offset,
-            $limit
-        ),
-        ARRAY_A
-    );
-
-    return [
-        'logs'  => $results,
-        'total' => $total,
-    ];
-}
-
-/**
- * AJAX handler to return event logs for a given page in JSON format.
- */
-function smarty_gtm_load_event_logs_paginated() {
-    check_ajax_referer('smarty_gtm_events_nonce', 'nonce');
-
-    if (!current_user_can('manage_options')) {
-        wp_send_json_error(__('You do not have sufficient permissions.', 'smarty-gtm-events-for-woocommerce'));
+        return [
+            'logs'  => $results,
+            'total' => $total,
+        ];
     }
-
-    $page  = isset($_POST['page']) ? absint($_POST['page']) : 1;
-    $limit = 10;
-
-    // Retrieve rows
-    $paginated_result = smarty_gtm_get_event_logs_paginated($page, $limit);
-    $logs  = $paginated_result['logs'];
-    $total = $paginated_result['total'];
-
-    // For each row, unserialize and store as a JSON string
-    foreach ($logs as &$row) {
-        // Unserialize the event_data
-        $raw_data = maybe_unserialize($row['event_data']);
-        // Convert to pretty JSON (avoid HTML chars in output)
-        $json_str = json_encode($raw_data, JSON_UNESCAPED_SLASHES | JSON_PRETTY_PRINT);
-
-        // Save back so the JS can display it directly
-        $row['event_data'] = $json_str;
-    }
-    unset($row);
-
-    // Now return the updated logs
-    wp_send_json_success(array(
-        'logs'  => $logs,
-        'total' => $total,
-    ));
 }
-add_action('wp_ajax_smarty_gtm_load_event_logs_paginated', 'smarty_gtm_load_event_logs_paginated');
-add_action('wp_ajax_nopriv_smarty_gtm_load_event_logs_paginated', 'smarty_gtm_load_event_logs_paginated');
+
+if (!function_exists('smarty_gtm_delete_old_events')) {
+    /**
+     * Deletes old GTM event logs based on the selected number of days.
+     *
+     * This function is triggered via an AJAX request from the admin panel.
+     * It checks for the necessary permissions and nonce security before deleting 
+     * records older than the specified number of days from the database.
+     *
+     * @return void Outputs a JSON response with the number of deleted records or an error message.
+     */
+    function smarty_gtm_delete_old_events() {
+        check_ajax_referer('smarty_gtm_events_nonce', 'nonce');
+
+        if (!current_user_can('manage_options')) {
+            wp_send_json_error(array('message' => __('Unauthorized access', 'smarty-gtm-events-for-woocommerce')));
+        }
+
+        $days = isset($_POST['days']) ? absint($_POST['days']) : 30;
+        global $wpdb;
+        $table_name = $wpdb->prefix . 'smarty_gtm_event_log';
+
+        $deleted_count = $wpdb->query(
+            $wpdb->prepare(
+                "DELETE FROM $table_name WHERE event_time < DATE_SUB(NOW(), INTERVAL %d DAY)",
+                $days
+            )
+        );
+
+        if ($deleted_count === false) {
+            wp_send_json_error(array('message' => __('Failed to delete events', 'smarty-gtm-events-for-woocommerce')));
+        } else {
+            wp_send_json_success(array('deleted_count' => $deleted_count));
+        }
+    }
+    add_action('wp_ajax_smarty_gtm_delete_old_events', 'smarty_gtm_delete_old_events');
+}
+
+if (!function_exists('smarty_gtm_load_event_logs_paginated')) {
+    /**
+     * AJAX handler to return event logs for a given page in JSON format.
+     */
+    function smarty_gtm_load_event_logs_paginated() {
+        check_ajax_referer('smarty_gtm_events_nonce', 'nonce');
+
+        if (!current_user_can('manage_options')) {
+            wp_send_json_error(__('You do not have sufficient permissions.', 'smarty-gtm-events-for-woocommerce'));
+        }
+
+        $page  = isset($_POST['page']) ? absint($_POST['page']) : 1;
+        $limit = 10;
+
+        // Retrieve rows
+        $paginated_result = smarty_gtm_get_event_logs_paginated($page, $limit);
+        $logs  = $paginated_result['logs'];
+        $total = $paginated_result['total'];
+
+        // For each row, unserialize and store as a JSON string
+        foreach ($logs as &$row) {
+            // Unserialize the event_data
+            $raw_data = maybe_unserialize($row['event_data']);
+            // Convert to pretty JSON (avoid HTML chars in output)
+            $json_str = json_encode($raw_data, JSON_UNESCAPED_SLASHES | JSON_PRETTY_PRINT);
+
+            // Save back so the JS can display it directly
+            $row['event_data'] = $json_str;
+        }
+        unset($row);
+
+        // Now return the updated logs
+        wp_send_json_success(array(
+            'logs'  => $logs,
+            'total' => $total,
+        ));
+    }
+    add_action('wp_ajax_smarty_gtm_load_event_logs_paginated', 'smarty_gtm_load_event_logs_paginated');
+    add_action('wp_ajax_nopriv_smarty_gtm_load_event_logs_paginated', 'smarty_gtm_load_event_logs_paginated');
+}
 
 if (!function_exists('smarty_gtm_load_readme')) {
     /**

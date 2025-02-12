@@ -138,6 +138,38 @@ jQuery(document).ready(function($) {
         });
     }
 
+    $('#smarty-gtm-delete-old-events').on('click', function() {
+        var days = $('#smarty-gtm-delete-older-than').val();
+        var confirmDelete = confirm('Are you sure you want to delete events older than ' + days + ' days?');
+        if (!confirmDelete) {
+            return;
+        }
+
+        $.ajax({
+            url: smartyGtmEvents.ajaxUrl,
+            type: 'POST',
+            data: {
+                action: 'smarty_gtm_delete_old_events',
+                nonce: smartyGtmEvents.nonce,
+                days: days
+            },
+            beforeSend: function() {
+                $('#smarty-gtm-delete-old-events').text('Deleting...').prop('disabled', true);
+            },
+            success: function(response) {
+                if (response.success) {
+                    alert('Deleted ' + response.data.deleted_count + ' old events.');
+                    location.reload();
+                } else {
+                    alert('Error: ' + response.data.message);
+                }
+            },
+            complete: function() {
+                $('#smarty-gtm-delete-old-events').text('Delete Old Events').prop('disabled', false);
+            }
+        });
+    });
+
     // Attach click events for pagination
     $('#smarty-gtm-prev-page').on('click', function() {
         if (currentPage > 1) {
